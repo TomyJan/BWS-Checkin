@@ -14,5 +14,23 @@ func New(cfg config.Config) (http.Handler, func(), error) {
 		return nil, nil, err
 	}
 	cleanup := func() { _ = db.Close() }
-	return httpapi.NewRouter(httpapi.Deps{Store: db, DevAuth: cfg.DevAuth, UploadDir: cfg.UploadDir}), cleanup, nil
+	return httpapi.NewRouter(httpapi.Deps{
+		Store:     db,
+		DevAuth:   cfg.DevAuth,
+		UploadDir: cfg.UploadDir,
+		OIDC: httpapi.OIDCConfig{
+			IssuerURL:         cfg.OIDCIssuerURL,
+			ClientID:          cfg.OIDCClientID,
+			ClientSecret:      cfg.OIDCClientSecret,
+			RedirectURL:       oidcRedirectURL(cfg),
+			PostLoginRedirect: cfg.PublicBase,
+		},
+	}), cleanup, nil
+}
+
+func oidcRedirectURL(cfg config.Config) string {
+	if cfg.OIDCRedirectURL != "" {
+		return cfg.OIDCRedirectURL
+	}
+	return cfg.PublicBase + "/auth/oidc/callback"
 }

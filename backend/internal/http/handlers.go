@@ -19,6 +19,7 @@ type Deps struct {
 	Store     *store.Store
 	DevAuth   bool
 	UploadDir string
+	OIDC      OIDCConfig
 }
 
 type Handler struct {

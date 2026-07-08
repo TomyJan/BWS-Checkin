@@ -13,6 +13,8 @@ func NewRouter(deps Deps) http.Handler {
 		_, _ = w.Write([]byte("ok"))
 	})
 	h := Handler{deps: deps}
+	r.Get("/auth/oidc/login", h.oidcLogin)
+	r.Get("/auth/oidc/callback", h.oidcCallback)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/dev/login", h.devLogin)
 		r.Post("/logout", h.logout)

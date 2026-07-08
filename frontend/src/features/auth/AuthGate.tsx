@@ -25,7 +25,11 @@ export function AuthGate({ children }: PropsWithChildren) {
   });
 
   async function login() {
-    await fetch("/api/v1/dev/login?name=TomyJan", { method: "POST", credentials: "include" });
+    const response = await fetch("/api/v1/dev/login?name=TomyJan", { method: "POST", credentials: "include" });
+    if (!response.ok) {
+      window.location.assign("/auth/oidc/login");
+      return;
+    }
     await queryClient.invalidateQueries({ queryKey: ["me"] });
   }
 

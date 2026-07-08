@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -45,6 +46,94 @@ func TestMeRequiresLogin(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestOIDCLoginAndCallbackCreatesSession(t *testing.T) {
+	s := newTestStore(t)
+	issuer := newOIDCTestProvider(t)
+	h := NewRouter(Deps{
+		Store: s,
+		OIDC: OIDCConfig{
+			IssuerURL:         issuer.URL,
+			ClientID:          "bws-client",
+			ClientSecret:      "bws-secret",
+			RedirectURL:       "http://app.test/auth/oidc/callback",
+			PostLoginRedirect: "http://app.test/",
+		},
+	})
+
+	login := httptest.NewRequest(http.MethodGet, "/auth/oidc/login", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, login)
+	if w.Code != http.StatusFound {
+		t.Fatalf("login status = %d, body = %s", w.Code, w.Body.String())
+	}
+	location := w.Header().Get("Location")
+	authURL, err := url.Parse(location)
+	if err != nil {
+		t.Fatalf("parse auth redirect: %v", err)
+	}
+	if authURL.Path != "/authorize" {
+		t.Fatalf("auth path = %q, want /authorize", authURL.Path)
+	}
+	if authURL.Query().Get("client_id") != "bws-client" {
+		t.Fatalf("client_id = %q", authURL.Query().Get("client_id"))
+	}
+	if authURL.Query().Get("redirect_uri") != "http://app.test/auth/oidc/callback" {
+		t.Fatalf("redirect_uri = %q", authURL.Query().Get("redirect_uri"))
+	}
+	if authURL.Query().Get("state") == "" {
+		t.Fatal("state is empty")
+	}
+
+	callback := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?code=auth-code&state="+url.QueryEscape(authURL.Query().Get("state")), nil)
+	for _, c := range w.Result().Cookies() {
+		callback.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, callback)
+	if w.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Location") != "http://app.test/" {
+		t.Fatalf("callback location = %q", w.Header().Get("Location"))
+	}
+
+	me := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	for _, c := range w.Result().Cookies() {
+		me.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, me)
+	if w.Code != http.StatusOK {
+		t.Fatalf("me status = %d, body = %s", w.Code, w.Body.String())
+	}
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), "Alice") {
+		t.Fatalf("expected OIDC display name in response, got %s", w.Body.String())
+	}
+}
+
+func TestOIDCCallbackRejectsInvalidState(t *testing.T) {
+	s := newTestStore(t)
+	issuer := newOIDCTestProvider(t)
+	h := NewRouter(Deps{
+		Store: s,
+		OIDC: OIDCConfig{
+			IssuerURL:         issuer.URL,
+			ClientID:          "bws-client",
+			ClientSecret:      "bws-secret",
+			RedirectURL:       "http://app.test/auth/oidc/callback",
+			PostLoginRedirect: "http://app.test/",
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?code=auth-code&state=bad", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("callback status = %d, want 400", w.Code)
 	}
 }
 
@@ -375,4 +464,43 @@ func multipartRequest(t *testing.T, path string, filename string, content []byte
 	req := httptest.NewRequest(http.MethodPost, path, &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req
+}
+
+func newOIDCTestProvider(t *testing.T) *httptest.Server {
+	t.Helper()
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			writeJSON(w, http.StatusOK, map[string]string{
+				"authorization_endpoint": server.URL + "/authorize",
+				"token_endpoint":         server.URL + "/token",
+				"userinfo_endpoint":      server.URL + "/userinfo",
+			})
+		case "/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("parse token form: %v", err)
+			}
+			if r.Form.Get("code") != "auth-code" {
+				t.Fatalf("token code = %q", r.Form.Get("code"))
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"access_token": "access-token",
+				"token_type":   "Bearer",
+			})
+		case "/userinfo":
+			if r.Header.Get("Authorization") != "Bearer access-token" {
+				t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
+			}
+			writeJSON(w, http.StatusOK, map[string]string{
+				"sub":   "oidc-user-1",
+				"name":  "Alice",
+				"email": "alice@example.test",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
 }
