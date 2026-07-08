@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS task_completions (
   task_id TEXT NOT NULL REFERENCES tasks(id),
   target_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   checked_by_user_id INTEGER NOT NULL REFERENCES users(id),
+  completed INTEGER NOT NULL DEFAULT 1,
   completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (group_id, task_id, target_user_id)
 );
 

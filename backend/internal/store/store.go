@@ -30,6 +30,15 @@ type CreateGroupInput struct {
 	OwnerUserID int64
 }
 
+type SyncTaskCompletionInput struct {
+	GroupID         string
+	TaskID          string
+	TargetUserID    int64
+	CheckedByUserID int64
+	Completed       bool
+	UpdatedAt       time.Time
+}
+
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return nil, err
@@ -68,7 +77,43 @@ func (s *Store) migrate() error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(string(body))
+	if _, err := s.db.Exec(string(body)); err != nil {
+		return err
+	}
+	if err := s.ensureTaskCompletionColumn("completed", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	if err := s.ensureTaskCompletionColumn("updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE task_completions SET updated_at = completed_at WHERE updated_at = ''`)
+	return err
+}
+
+func (s *Store) ensureTaskCompletionColumn(name string, definition string) error {
+	rows, err := s.db.Query(`PRAGMA table_info(task_completions)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var columnName string
+		var columnType string
+		var notNull int
+		var defaultValue sql.NullString
+		var primaryKey int
+		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if columnName == name {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`ALTER TABLE task_completions ADD COLUMN ` + name + ` ` + definition)
 	return err
 }
 
@@ -222,7 +267,9 @@ func (s *Store) GroupTasks(ctx context.Context, groupID string) ([]domain.TaskSt
 			if completion, ok := completions[completionKey{TaskID: tasks[taskIndex].ID, UserID: member.ID}]; ok {
 				item = completion
 				item.Member = member
-				tasks[taskIndex].CompletedCount++
+				if item.Completed {
+					tasks[taskIndex].CompletedCount++
+				}
 			}
 			tasks[taskIndex].Members = append(tasks[taskIndex].Members, item)
 		}
@@ -231,18 +278,49 @@ func (s *Store) GroupTasks(ctx context.Context, groupID string) ([]domain.TaskSt
 }
 
 func (s *Store) MarkComplete(ctx context.Context, groupID string, taskID string, targetUserID int64, checkedByUserID int64) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT OR IGNORE INTO task_completions (group_id, task_id, target_user_id, checked_by_user_id)
-		VALUES (?, ?, ?, ?)
-	`, groupID, taskID, targetUserID, checkedByUserID)
-	return err
+	return s.SyncTaskCompletion(ctx, SyncTaskCompletionInput{
+		GroupID:         groupID,
+		TaskID:          taskID,
+		TargetUserID:    targetUserID,
+		CheckedByUserID: checkedByUserID,
+		Completed:       true,
+		UpdatedAt:       time.Now().UTC(),
+	})
 }
 
 func (s *Store) UnmarkComplete(ctx context.Context, groupID string, taskID string, targetUserID int64) error {
+	return s.SyncTaskCompletion(ctx, SyncTaskCompletionInput{
+		GroupID:         groupID,
+		TaskID:          taskID,
+		TargetUserID:    targetUserID,
+		CheckedByUserID: targetUserID,
+		Completed:       false,
+		UpdatedAt:       time.Now().UTC(),
+	})
+}
+
+func (s *Store) SyncTaskCompletion(ctx context.Context, input SyncTaskCompletionInput) error {
+	updatedAt := input.UpdatedAt.UTC()
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	timeValue := updatedAt.Format(time.RFC3339Nano)
+	completed := 0
+	if input.Completed {
+		completed = 1
+	}
 	_, err := s.db.ExecContext(ctx, `
-		DELETE FROM task_completions
-		WHERE group_id = ? AND task_id = ? AND target_user_id = ?
-	`, groupID, taskID, targetUserID)
+		INSERT INTO task_completions (
+			group_id, task_id, target_user_id, checked_by_user_id, completed, completed_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(group_id, task_id, target_user_id) DO UPDATE SET
+			checked_by_user_id = excluded.checked_by_user_id,
+			completed = excluded.completed,
+			completed_at = excluded.completed_at,
+			updated_at = excluded.updated_at
+		WHERE excluded.updated_at >= task_completions.updated_at
+	`, input.GroupID, input.TaskID, input.TargetUserID, input.CheckedByUserID, completed, timeValue, timeValue)
 	return err
 }
 
@@ -308,7 +386,7 @@ type completionKey struct {
 
 func (s *Store) completions(ctx context.Context, groupID string) (map[completionKey]domain.MemberCompletion, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tc.task_id, tc.target_user_id, tc.checked_by_user_id, u.display_name, tc.completed_at
+		SELECT tc.task_id, tc.target_user_id, tc.checked_by_user_id, u.display_name, tc.completed, tc.completed_at, tc.updated_at
 		FROM task_completions tc
 		JOIN users u ON u.id = tc.checked_by_user_id
 		WHERE tc.group_id = ?
@@ -324,14 +402,17 @@ func (s *Store) completions(ctx context.Context, groupID string) (map[completion
 		var targetUserID int64
 		var checkedByID int64
 		var checkedByName string
+		var completed int
 		var completedAtRaw string
-		if err := rows.Scan(&taskID, &targetUserID, &checkedByID, &checkedByName, &completedAtRaw); err != nil {
+		var updatedAtRaw string
+		if err := rows.Scan(&taskID, &targetUserID, &checkedByID, &checkedByName, &completed, &completedAtRaw, &updatedAtRaw); err != nil {
 			return nil, err
 		}
 		completedAt := parseSQLiteTime(completedAtRaw)
 		result[completionKey{TaskID: taskID, UserID: targetUserID}] = domain.MemberCompletion{
-			Completed:     true,
+			Completed:     completed == 1,
 			CompletedAt:   completedAt,
+			UpdatedAt:     parseSQLiteTime(updatedAtRaw),
 			CheckedByID:   &checkedByID,
 			CheckedByName: checkedByName,
 		}

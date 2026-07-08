@@ -38,6 +38,7 @@ type MemberCompletion struct {
 	Member        Member     `json:"member"`
 	Completed     bool       `json:"completed"`
 	CompletedAt   *time.Time `json:"completedAt"`
+	UpdatedAt     *time.Time `json:"updatedAt"`
 	CheckedByID   *int64     `json:"checkedById"`
 	CheckedByName string     `json:"checkedByName"`
 }

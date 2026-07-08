@@ -22,6 +22,7 @@ func TestDevLoginAndMe(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("login status = %d", w.Code)
 	}
+	assertOK(t, w)
 
 	me := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	for _, c := range w.Result().Cookies() {
@@ -32,6 +33,7 @@ func TestDevLoginAndMe(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("me status = %d", w.Code)
 	}
+	assertOK(t, w)
 }
 
 func TestMeRequiresLogin(t *testing.T) {
@@ -51,7 +53,7 @@ func TestGroupsAndTasksFlow(t *testing.T) {
 	h := NewRouter(Deps{Store: s, DevAuth: true})
 	cookies := loginForTest(t, h, "TomyJan")
 
-	req := jsonRequest(t, http.MethodPost, "/api/v1/groups", map[string]any{
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/create", map[string]any{
 		"id":          "bw2026-fri",
 		"name":        "BW2026 周五",
 		"day":         "friday",
@@ -62,11 +64,12 @@ func TestGroupsAndTasksFlow(t *testing.T) {
 	}
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated {
+	if w.Code != http.StatusOK {
 		t.Fatalf("create group status = %d, body = %s", w.Code, w.Body.String())
 	}
+	assertOK(t, w)
 
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/groups/bw2026-fri/tasks", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/group/tasks?groupId=bw2026-fri", nil)
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
@@ -75,13 +78,42 @@ func TestGroupsAndTasksFlow(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("tasks status = %d, body = %s", w.Code, w.Body.String())
 	}
+	assertOK(t, w)
+}
+
+func TestDuplicateGroupReturnsBusinessErrorWithHTTP200(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true})
+	cookies := loginForTest(t, h, "TomyJan")
+
+	body := map[string]any{
+		"id": "bw2026-fri", "name": "BW2026 周五", "day": "friday",
+	}
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/create", body)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/create", body)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("duplicate group status = %d, want 200", w.Code)
+	}
+	assertBusinessError(t, w, "group_id_conflict")
 }
 
 func TestQRUploadRequiresLogin(t *testing.T) {
 	s := newTestStore(t)
 	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: t.TempDir()})
 
-	req := multipartRequest(t, "/api/v1/me/qr", "qr.png", []byte{0x89, 'P', 'N', 'G'})
+	req := multipartRequest(t, "/api/v1/me/qr/upload", "qr.png", []byte{0x89, 'P', 'N', 'G'})
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
@@ -94,7 +126,7 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: t.TempDir()})
 	cookies := loginForTest(t, h, "TomyJan")
 
-	req := multipartRequest(t, "/api/v1/me/qr", "qr.png", []byte{0x89, 'P', 'N', 'G'})
+	req := multipartRequest(t, "/api/v1/me/qr/upload", "qr.png", []byte{0x89, 'P', 'N', 'G'})
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
@@ -103,6 +135,7 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("upload status = %d, body = %s", w.Code, w.Body.String())
 	}
+	assertOK(t, w)
 
 	me := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	for _, c := range cookies {
@@ -113,6 +146,7 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("me status = %d", w.Code)
 	}
+	assertOK(t, w)
 	if !strings.Contains(w.Body.String(), "/uploads/") {
 		t.Fatalf("expected qrImageUrl in response, got %s", w.Body.String())
 	}
@@ -137,6 +171,38 @@ func loginForTest(t *testing.T, h http.Handler, name string) []*http.Cookie {
 		t.Fatalf("login status = %d", w.Code)
 	}
 	return w.Result().Cookies()
+}
+
+func assertOK(t *testing.T, w *httptest.ResponseRecorder) {
+	t.Helper()
+	var body struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v, body = %s", err, w.Body.String())
+	}
+	if !body.OK {
+		t.Fatalf("ok = false, body = %s", w.Body.String())
+	}
+}
+
+func assertBusinessError(t *testing.T, w *httptest.ResponseRecorder, code string) {
+	t.Helper()
+	var body struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v, body = %s", err, w.Body.String())
+	}
+	if body.OK {
+		t.Fatalf("ok = true, want false, body = %s", w.Body.String())
+	}
+	if body.Error.Code != code {
+		t.Fatalf("error code = %q, want %q, body = %s", body.Error.Code, code, w.Body.String())
+	}
 }
 
 func jsonRequest(t *testing.T, method, path string, body any) *http.Request {
