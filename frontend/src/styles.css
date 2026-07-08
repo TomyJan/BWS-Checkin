@@ -132,6 +132,7 @@ body {
 }
 
 .member-tile {
+  position: relative;
   min-width: 0;
   min-height: 62px;
   display: grid;
@@ -167,6 +168,21 @@ body {
 .member-tile.active {
   border-color: #75d8c8;
   outline: 2px solid rgb(117 216 200 / 0.24);
+}
+
+.member-remove {
+  position: absolute !important;
+  top: 4px;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  color: rgb(255 255 255 / 0.72) !important;
+  background: rgb(0 0 0 / 0.2) !important;
+}
+
+.member-remove:hover {
+  color: #fff !important;
+  background: rgb(255 255 255 / 0.16) !important;
 }
 
 @media (max-width: 720px) {

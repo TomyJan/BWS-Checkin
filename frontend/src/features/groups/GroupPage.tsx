@@ -1,8 +1,11 @@
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CheckIcon from "@mui/icons-material/Check";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import MoreVertIcon from "@mui/icons-material/MoreVert";
 import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
+import PersonRemoveIcon from "@mui/icons-material/PersonRemove";
 import {
   Box,
   Button,
@@ -15,7 +18,11 @@ import {
   LinearProgress,
   List,
   ListItemButton,
+  ListItemIcon,
   ListItemText,
+  Menu,
+  MenuItem,
+  Snackbar,
   Stack,
   Typography
 } from "@mui/material";
@@ -42,6 +49,8 @@ export function GroupPage() {
   const [memberIndex, setMemberIndex] = useState(0);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [offlineSnapshot, setOfflineSnapshot] = useState(false);
+  const [manageAnchor, setManageAnchor] = useState<HTMLElement | null>(null);
+  const [copyMessage, setCopyMessage] = useState("");
   const me = queryClient.getQueryData<MeResponse>(["me"]);
 
   const group = useQuery({
@@ -85,6 +94,7 @@ export function GroupPage() {
   const currentTask = tasks[Math.min(taskIndex, Math.max(tasks.length - 1, 0))];
   const members = currentTask?.members ?? [];
   const currentMember = members[Math.min(memberIndex, Math.max(members.length - 1, 0))];
+  const isOwner = group.data?.group.role === "owner";
 
   const complete = useMutation({
     mutationFn: async (action: Omit<PendingCompletion, "id">) => {
@@ -115,6 +125,23 @@ export function GroupPage() {
     }
   });
 
+  const removeMember = useMutation({
+    mutationFn: async (userId: number) => {
+      await api<{ ok: boolean }>("/group/member/remove", {
+        method: "POST",
+        body: JSON.stringify({ groupId, userId })
+      });
+    },
+    onSuccess: async () => {
+      setMemberIndex(0);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] }),
+        queryClient.invalidateQueries({ queryKey: ["group", groupId] }),
+        queryClient.invalidateQueries({ queryKey: ["groups"] })
+      ]);
+    }
+  });
+
   const loading = group.isLoading || tasksQuery.isLoading;
 
   function shiftMember(delta: number) {
@@ -138,6 +165,17 @@ export function GroupPage() {
       completed: !entry.completed,
       updatedAt: new Date().toISOString()
     });
+  }
+
+  async function copyInviteLink() {
+    const invite = `${window.location.origin}/?invite=${encodeURIComponent(groupId)}`;
+    await navigator.clipboard.writeText(invite);
+    setCopyMessage("已复制邀请链接");
+    setManageAnchor(null);
+  }
+
+  function canRemove(entry: MemberCompletion) {
+    return isOwner && entry.member.id !== me?.user.id;
   }
 
   useEffect(() => {
@@ -205,7 +243,14 @@ export function GroupPage() {
               </Typography>
             </Box>
           </Stack>
-          {offlineSnapshot && <Chip label="离线快照" color="warning" size="small" />}
+          <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
+            {offlineSnapshot && <Chip label="离线快照" color="warning" size="small" />}
+            {isOwner && (
+              <IconButton color="inherit" onClick={(event) => setManageAnchor(event.currentTarget)}>
+                <MoreVertIcon />
+              </IconButton>
+            )}
+          </Stack>
         </Stack>
       </Box>
 
@@ -231,14 +276,33 @@ export function GroupPage() {
           />
           <Box className="member-grid">
             {members.map((entry, index) => (
-              <button
+              <Box
                 key={entry.member.id}
                 className={`member-tile ${entry.completed ? "done" : ""} ${index === memberIndex ? "active" : ""}`}
                 onClick={() => setMemberIndex(index)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") setMemberIndex(index);
+                }}
               >
                 <span>{entry.member.displayName}</span>
                 <small>{entry.completed ? `${formatTime(entry.completedAt)} ${entry.checkedByName}` : "未完成"}</small>
-              </button>
+                {canRemove(entry) && (
+                  <IconButton
+                    className="member-remove"
+                    size="small"
+                    color="inherit"
+                    disabled={removeMember.isPending}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      removeMember.mutate(entry.member.id);
+                    }}
+                  >
+                    <PersonRemoveIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Box>
             ))}
           </Box>
           <Stack direction="row" sx={{ gap: 1 }}>
@@ -267,6 +331,15 @@ export function GroupPage() {
           </List>
         </DialogContent>
       </Dialog>
+      <Menu anchorEl={manageAnchor} open={Boolean(manageAnchor)} onClose={() => setManageAnchor(null)}>
+        <MenuItem onClick={() => void copyInviteLink()}>
+          <ListItemIcon>
+            <ContentCopyIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>复制邀请链接</ListItemText>
+        </MenuItem>
+      </Menu>
+      <Snackbar open={Boolean(copyMessage)} autoHideDuration={1800} message={copyMessage} onClose={() => setCopyMessage("")} />
     </Box>
   );
 }
