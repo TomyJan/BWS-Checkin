@@ -13,6 +13,8 @@ export interface Group {
   role: "owner" | "member";
   memberCount: number;
   taskCount: number;
+  joinLocked: boolean;
+  archivedAt: string | null;
 }
 
 export interface MeResponse {

@@ -88,6 +88,89 @@ export function CreateGroupDialog({ open, onClose, onDone }: DialogProps) {
   );
 }
 
+interface EditGroupDialogProps extends DialogProps {
+  group: Group | null;
+}
+
+export function EditGroupDialog({ open, onClose, onDone, group }: EditGroupDialogProps) {
+  const queryClient = useQueryClient();
+  const [values, setValues] = useState<CreateGroupValues>({
+    id: "",
+    name: "",
+    day: "friday",
+    description: ""
+  });
+
+  useEffect(() => {
+    if (!group || !open) return;
+    setValues({
+      id: group.id,
+      name: group.name,
+      day: group.day,
+      description: group.description
+    });
+  }, [group, open]);
+
+  const updateGroup = useMutation({
+    mutationFn: () =>
+      api<{ group: Group }>("/group/update", {
+        method: "POST",
+        body: JSON.stringify({
+          groupId: values.id,
+          name: values.name,
+          day: values.day,
+          description: values.description
+        })
+      }),
+    onSuccess: async ({ group }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["groups"] }),
+        queryClient.invalidateQueries({ queryKey: ["group", group.id] })
+      ]);
+      onDone(group);
+      onClose();
+    }
+  });
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+      <DialogTitle>编辑互助组</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ pt: 1 }}>
+          <TextField label="名称" value={values.name} onChange={(event) => setValues({ ...values, name: event.target.value })} />
+          <TextField label="ID / 邀请码" value={values.id} disabled />
+          <ToggleButtonGroup
+            exclusive
+            fullWidth
+            color="primary"
+            value={values.day}
+            onChange={(_, day) => {
+              if (day) setValues({ ...values, day });
+            }}
+          >
+            <ToggleButton value="friday">周五</ToggleButton>
+            <ToggleButton value="saturday">周六</ToggleButton>
+            <ToggleButton value="sunday">周日</ToggleButton>
+          </ToggleButtonGroup>
+          <TextField
+            multiline
+            minRows={3}
+            label="说明"
+            value={values.description}
+            onChange={(event) => setValues({ ...values, description: event.target.value })}
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>取消</Button>
+        <Button disabled={!values.id || !values.name || updateGroup.isPending} variant="contained" onClick={() => updateGroup.mutate()}>
+          保存
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 interface JoinGroupDialogProps extends DialogProps {
   defaultInvite?: string;
 }

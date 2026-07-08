@@ -165,6 +165,11 @@ body {
   background: rgb(139 220 150 / 0.13);
 }
 
+.member-tile.missing-qr {
+  border-color: rgb(255 193 7 / 0.42);
+  background: rgb(255 193 7 / 0.12);
+}
+
 .member-tile.active {
   border-color: #75d8c8;
   outline: 2px solid rgb(117 216 200 / 0.24);

@@ -10,11 +10,13 @@ import {
   Chip,
   Container,
   IconButton,
+  FormControlLabel,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
   Stack,
+  Switch,
   Tooltip,
   Typography
 } from "@mui/material";
@@ -39,8 +41,12 @@ export function HomePage() {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(Boolean(searchParams.get("invite")));
+  const [includeArchived, setIncludeArchived] = useState(false);
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<MeResponse>("/me") });
-  const groups = useQuery({ queryKey: ["groups"], queryFn: () => api<GroupsResponse>("/group/list") });
+  const groups = useQuery({
+    queryKey: ["groups", includeArchived],
+    queryFn: () => api<GroupsResponse>(`/group/list${includeArchived ? "?includeArchived=1" : ""}`)
+  });
   const groupItems = groups.data?.groups ?? [];
 
   function goToGroup(group: Group) {
@@ -138,6 +144,13 @@ export function HomePage() {
             )}
           </Menu>
 
+          <Stack direction="row" sx={{ justifyContent: "flex-end" }}>
+            <FormControlLabel
+              control={<Switch checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} />}
+              label="显示已归档"
+            />
+          </Stack>
+
           <Stack spacing={1.5}>
             {groupItems.map((group) => (
               <Card key={group.id} variant="outlined">
@@ -152,7 +165,11 @@ export function HomePage() {
                           ID: {group.id} · {group.memberCount} 人 · {group.taskCount} 个点位
                         </Typography>
                       </Box>
-                      <Chip color={group.role === "owner" ? "primary" : "default"} label={group.role === "owner" ? "创建者" : "成员"} />
+                      <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        {group.archivedAt && <Chip color="default" label="已归档" />}
+                        {group.joinLocked && !group.archivedAt && <Chip color="warning" label="已锁定" />}
+                        <Chip color={group.role === "owner" ? "primary" : "default"} label={group.role === "owner" ? "创建者" : "成员"} />
+                      </Stack>
                     </Stack>
                   </CardContent>
                 </CardActionArea>

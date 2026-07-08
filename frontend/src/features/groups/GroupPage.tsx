@@ -1,7 +1,11 @@
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import ArchiveIcon from "@mui/icons-material/Archive";
 import CheckIcon from "@mui/icons-material/Check";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import EditIcon from "@mui/icons-material/Edit";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import LockIcon from "@mui/icons-material/Lock";
+import LockOpenIcon from "@mui/icons-material/LockOpen";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
@@ -40,6 +44,7 @@ import {
   type PendingCompletion
 } from "../../offline/completionSync";
 import { loadGroupSnapshot, saveGroupSnapshot } from "../../offline/groupSnapshot";
+import { EditGroupDialog } from "./GroupDialogs";
 
 export function GroupPage() {
   const { groupId = "" } = useParams();
@@ -51,6 +56,7 @@ export function GroupPage() {
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [offlineSnapshot, setOfflineSnapshot] = useState(false);
   const [manageAnchor, setManageAnchor] = useState<HTMLElement | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
   const [pendingCount, setPendingCount] = useState(() => pendingCompletionCount());
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
@@ -99,14 +105,17 @@ export function GroupPage() {
   const currentTask = tasks[Math.min(taskIndex, Math.max(tasks.length - 1, 0))];
   const members = currentTask?.members ?? [];
   const currentMember = members[Math.min(memberIndex, Math.max(members.length - 1, 0))];
-  const isOwner = group.data?.group.role === "owner";
+  const currentGroup = group.data?.group;
+  const isOwner = currentGroup?.role === "owner";
+  const isArchived = Boolean(currentGroup?.archivedAt);
 
   const complete = useMutation({
     mutationFn: async (action: Omit<PendingCompletion, "id">) => {
       try {
         await trySyncCompletion(action);
         return { action, synced: true };
-      } catch {
+      } catch (error) {
+        if (navigator.onLine) throw error;
         queueCompletion(action);
         setPendingCount(pendingCompletionCount());
         return { action, synced: false };
@@ -126,9 +135,9 @@ export function GroupPage() {
     onError: (_error, _action, context) => {
       if (context?.previous) queryClient.setQueryData(["groupTasks", groupId], context.previous);
     },
-    onSuccess: ({ synced }) => {
+    onSuccess: ({ action, synced }) => {
       if (synced) void queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] });
-      if (!synced) setCopyMessage("已离线保存，联网后自动同步");
+      if (action.completed) advanceToNextIncomplete(action.userId);
     }
   });
 
@@ -149,6 +158,39 @@ export function GroupPage() {
     }
   });
 
+  const setJoinLocked = useMutation({
+    mutationFn: async (locked: boolean) => {
+      await api<{ group: typeof currentGroup }>(locked ? "/group/join-lock" : "/group/join-unlock", {
+        method: "POST",
+        body: JSON.stringify({ groupId })
+      });
+    },
+    onSuccess: async () => {
+      setManageAnchor(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["group", groupId] }),
+        queryClient.invalidateQueries({ queryKey: ["groups"] })
+      ]);
+    }
+  });
+
+  const archiveGroup = useMutation({
+    mutationFn: async () => {
+      await api<{ group: typeof currentGroup }>("/group/archive", {
+        method: "POST",
+        body: JSON.stringify({ groupId })
+      });
+    },
+    onSuccess: async () => {
+      setManageAnchor(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["group", groupId] }),
+        queryClient.invalidateQueries({ queryKey: ["groups"] }),
+        queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] })
+      ]);
+    }
+  });
+
   const loading = group.isLoading || tasksQuery.isLoading;
 
   function shiftMember(delta: number) {
@@ -164,7 +206,7 @@ export function GroupPage() {
   }
 
   function toggleCompletion(entry: MemberCompletion) {
-    if (!currentTask) return;
+    if (!currentTask || isArchived) return;
     complete.mutate({
       groupId,
       taskId: currentTask.id,
@@ -172,6 +214,21 @@ export function GroupPage() {
       completed: !entry.completed,
       updatedAt: new Date().toISOString()
     });
+  }
+
+  function advanceToNextIncomplete(completedUserId: number) {
+    const latest = queryClient.getQueryData<TasksResponse>(["groupTasks", groupId])?.tasks ?? tasks;
+    const task = latest.find((item) => item.id === currentTask?.id);
+    const latestMembers = task?.members ?? [];
+    if (latestMembers.length === 0) return;
+    const current = latestMembers.findIndex((entry) => entry.member.id === completedUserId);
+    for (let offset = 1; offset <= latestMembers.length; offset += 1) {
+      const nextIndex = (Math.max(current, 0) + offset) % latestMembers.length;
+      if (!latestMembers[nextIndex]?.completed) {
+        setMemberIndex(nextIndex);
+        return;
+      }
+    }
   }
 
   async function copyInviteLink() {
@@ -182,7 +239,19 @@ export function GroupPage() {
   }
 
   function canRemove(entry: MemberCompletion) {
-    return isOwner && entry.member.id !== me?.user.id;
+    return isOwner && !isArchived && entry.member.id !== me?.user.id;
+  }
+
+  function confirmRemove(entry: MemberCompletion) {
+    if (window.confirm(`确认移除 ${entry.member.displayName}？`)) {
+      removeMember.mutate(entry.member.id);
+    }
+  }
+
+  function confirmArchive() {
+    if (window.confirm("确认归档这个互助组？归档后不能继续打卡。")) {
+      archiveGroup.mutate();
+    }
   }
 
   function handlePointerDown(event: PointerEvent<HTMLElement>) {
@@ -207,12 +276,10 @@ export function GroupPage() {
 
   useEffect(() => {
     async function syncPending() {
-      const before = pendingCompletionCount();
       const remaining = await flushCompletionQueue();
       setPendingCount(remaining);
       if (remaining === 0) {
         await queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] });
-        if (before > 0) setCopyMessage("离线变更已同步");
       }
     }
     if (navigator.onLine) void syncPending();
@@ -298,7 +365,7 @@ export function GroupPage() {
             </IconButton>
             <Box>
               <Typography variant="h5" sx={{ fontWeight: 850 }}>
-                {group.data?.group.name}
+                {currentGroup?.name}
               </Typography>
               <Typography sx={{ color: "rgba(255,255,255,.72)", fontSize: 13 }}>
                 正在查看 {currentMember?.member.displayName ?? "-"} 的二维码
@@ -306,9 +373,8 @@ export function GroupPage() {
             </Box>
           </Stack>
           <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
-            {!isOnline && <Chip label="离线" color="warning" size="small" />}
-            {offlineSnapshot && <Chip label="离线快照" color="warning" size="small" />}
-            {pendingCount > 0 && <Chip label={`待同步 ${pendingCount}`} color="info" size="small" />}
+            {(!isOnline || offlineSnapshot) && <Chip label="离线模式" color="warning" size="small" />}
+            {isArchived && <Chip label="已归档" color="default" size="small" />}
             {isOwner && (
               <IconButton color="inherit" onClick={(event) => setManageAnchor(event.currentTarget)}>
                 <MoreVertIcon />
@@ -342,7 +408,9 @@ export function GroupPage() {
             {members.map((entry, index) => (
               <Box
                 key={entry.member.id}
-                className={`member-tile ${entry.completed ? "done" : ""} ${index === memberIndex ? "active" : ""}`}
+                className={`member-tile ${entry.completed ? "done" : ""} ${!entry.member.qrImageUrl ? "missing-qr" : ""} ${
+                  index === memberIndex ? "active" : ""
+                }`}
                 onClick={() => setMemberIndex(index)}
                 role="button"
                 tabIndex={0}
@@ -351,7 +419,7 @@ export function GroupPage() {
                 }}
               >
                 <span>{entry.member.displayName}</span>
-                <small>{entry.completed ? `${formatTime(entry.completedAt)} ${entry.checkedByName}` : "未完成"}</small>
+                <small>{entry.completed ? `${formatTime(entry.completedAt)} ${entry.checkedByName}` : entry.member.qrImageUrl ? "未完成" : "缺二维码"}</small>
                 {canRemove(entry) && (
                   <IconButton
                     className="member-remove"
@@ -360,7 +428,7 @@ export function GroupPage() {
                     disabled={removeMember.isPending}
                     onClick={(event) => {
                       event.stopPropagation();
-                      removeMember.mutate(entry.member.id);
+                      confirmRemove(entry);
                     }}
                   >
                     <PersonRemoveIcon fontSize="small" />
@@ -374,10 +442,14 @@ export function GroupPage() {
               fullWidth
               variant="contained"
               startIcon={<CheckIcon />}
-              disabled={!currentMember || complete.isPending}
+              disabled={!currentMember || complete.isPending || isArchived}
               onClick={() => currentMember && toggleCompletion(currentMember)}
             >
-              {currentMember?.completed ? `撤销完成 · ${completedLabel}` : `标记 ${currentMember?.member.displayName ?? ""} 完成`}
+              {isArchived
+                ? "已归档"
+                : currentMember?.completed
+                  ? `撤销完成 · ${completedLabel}`
+                  : `标记 ${currentMember?.member.displayName ?? ""} 完成`}
             </Button>
           </Stack>
         </Box>
@@ -396,13 +468,44 @@ export function GroupPage() {
         </DialogContent>
       </Dialog>
       <Menu anchorEl={manageAnchor} open={Boolean(manageAnchor)} onClose={() => setManageAnchor(null)}>
+        <MenuItem
+          onClick={() => {
+            setManageAnchor(null);
+            setEditOpen(true);
+          }}
+          disabled={isArchived}
+        >
+          <ListItemIcon>
+            <EditIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>编辑互助组</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => setJoinLocked.mutate(!currentGroup?.joinLocked)} disabled={isArchived || setJoinLocked.isPending}>
+          <ListItemIcon>{currentGroup?.joinLocked ? <LockOpenIcon fontSize="small" /> : <LockIcon fontSize="small" />}</ListItemIcon>
+          <ListItemText>{currentGroup?.joinLocked ? "解锁加入" : "锁定加入"}</ListItemText>
+        </MenuItem>
         <MenuItem onClick={() => void copyInviteLink()}>
           <ListItemIcon>
             <ContentCopyIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>复制邀请链接</ListItemText>
         </MenuItem>
+        <MenuItem onClick={confirmArchive} disabled={isArchived || archiveGroup.isPending}>
+          <ListItemIcon>
+            <ArchiveIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>归档互助组</ListItemText>
+        </MenuItem>
       </Menu>
+      <EditGroupDialog
+        open={editOpen}
+        group={currentGroup ?? null}
+        onClose={() => setEditOpen(false)}
+        onDone={() => {
+          void queryClient.invalidateQueries({ queryKey: ["group", groupId] });
+          void queryClient.invalidateQueries({ queryKey: ["groups"] });
+        }}
+      />
       <Snackbar open={Boolean(copyMessage)} autoHideDuration={1800} message={copyMessage} onClose={() => setCopyMessage("")} />
     </Box>
   );
