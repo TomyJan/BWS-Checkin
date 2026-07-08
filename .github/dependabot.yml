@@ -1,15 +1,18 @@
 version: 2
 updates:
+  # Enable version updates for frontend packages managed by pnpm
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
       interval: "daily"
 
+  # Enable version updates for Go modules
   - package-ecosystem: "gomod"
     directory: "/backend"
     schedule:
       interval: "weekly"
 
+  # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
