@@ -2,6 +2,7 @@ package app
 
 import (
 	"net/http"
+	"strings"
 
 	"bws-checkin/backend/internal/config"
 	httpapi "bws-checkin/backend/internal/http"
@@ -9,6 +10,9 @@ import (
 )
 
 func New(cfg config.Config) (http.Handler, func(), error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, nil, err
+	}
 	db, err := store.Open(cfg.DBPath)
 	if err != nil {
 		return nil, nil, err
@@ -25,6 +29,12 @@ func New(cfg config.Config) (http.Handler, func(), error) {
 			RedirectURL:       oidcRedirectURL(cfg),
 			PostLoginRedirect: cfg.PublicBase,
 		},
+		Session: httpapi.SessionConfig{
+			Secret:   cfg.SessionSecret,
+			Secure:   cfg.CookieSecure,
+			SameSite: sameSite(cfg.CookieSameSite),
+			MaxAge:   cfg.SessionMaxAge,
+		},
 	}), cleanup, nil
 }
 
@@ -33,4 +43,15 @@ func oidcRedirectURL(cfg config.Config) string {
 		return cfg.OIDCRedirectURL
 	}
 	return cfg.PublicBase + "/auth/oidc/callback"
+}
+
+func sameSite(value string) http.SameSite {
+	switch strings.ToLower(value) {
+	case "strict":
+		return http.SameSiteStrictMode
+	case "none":
+		return http.SameSiteNoneMode
+	default:
+		return http.SameSiteLaxMode
+	}
 }

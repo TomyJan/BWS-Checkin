@@ -1,11 +1,15 @@
 package httpapi
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,6 +17,7 @@ import (
 	"bws-checkin/backend/internal/domain"
 	"bws-checkin/backend/internal/filestore"
 	"bws-checkin/backend/internal/store"
+	_ "golang.org/x/image/webp"
 )
 
 type Deps struct {
@@ -20,6 +25,7 @@ type Deps struct {
 	DevAuth   bool
 	UploadDir string
 	OIDC      OIDCConfig
+	Session   SessionConfig
 }
 
 type Handler struct {
@@ -69,12 +75,12 @@ func (h Handler) devLogin(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "user_upsert_failed", err.Error())
 		return
 	}
-	setSession(w, user.ID)
+	h.setSession(w, user.ID)
 	writeOK(w, map[string]domain.User{"user": user})
 }
 
 func (h Handler) logout(w http.ResponseWriter, r *http.Request) {
-	clearSession(w)
+	h.clearSession(w)
 	writeOK(w, map[string]bool{"ok": true})
 }
 
@@ -108,7 +114,17 @@ func (h Handler) uploadQR(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "unsupported_image_type", "unsupported image type")
 		return
 	}
-	url, err := filestore.Local{Dir: h.deps.UploadDir}.SaveQR(user.ID, ext, file)
+	body, err := io.ReadAll(file)
+	if err != nil {
+		writeBusinessError(w, "invalid_upload", "invalid upload")
+		return
+	}
+	if !validImageContent(ext, body) {
+		writeBusinessError(w, "invalid_image", "invalid image")
+		return
+	}
+	files := filestore.Local{Dir: h.deps.UploadDir}
+	url, err := files.SaveQR(user.ID, ext, bytes.NewReader(body))
 	if err != nil {
 		writeBusinessError(w, "qr_save_failed", err.Error())
 		return
@@ -116,6 +132,9 @@ func (h Handler) uploadQR(w http.ResponseWriter, r *http.Request) {
 	if err := h.deps.Store.UpdateUserQR(r.Context(), user.ID, url); err != nil {
 		writeBusinessError(w, "qr_update_failed", err.Error())
 		return
+	}
+	if user.QRImageURL != "" && user.QRImageURL != url {
+		_ = files.DeleteURL(user.QRImageURL)
 	}
 	updated, err := h.deps.Store.UserByID(r.Context(), user.ID)
 	if err != nil {
@@ -130,9 +149,7 @@ func (h Handler) deleteQR(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if user.QRImageURL != "" && h.deps.UploadDir != "" {
-		_ = os.Remove(filepath.Join(h.deps.UploadDir, filepath.Base(user.QRImageURL)))
-	}
+	_ = filestore.Local{Dir: h.deps.UploadDir}.DeleteURL(user.QRImageURL)
 	if err := h.deps.Store.UpdateUserQR(r.Context(), user.ID, ""); err != nil {
 		writeBusinessError(w, "qr_delete_failed", err.Error())
 		return
@@ -446,7 +463,7 @@ func (h Handler) uncompleteTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) currentUser(w http.ResponseWriter, r *http.Request) (domain.User, bool) {
-	userID, ok := sessionUserID(r)
+	userID, ok := h.sessionUserID(r)
 	if !ok {
 		writeUnauthorized(w)
 		return domain.User{}, false
@@ -476,6 +493,23 @@ func allowedImageExt(ext string) bool {
 	switch ext {
 	case ".png", ".jpg", ".jpeg", ".webp":
 		return true
+	default:
+		return false
+	}
+}
+
+func validImageContent(ext string, body []byte) bool {
+	_, format, err := image.DecodeConfig(bytes.NewReader(body))
+	if err != nil {
+		return false
+	}
+	switch ext {
+	case ".png":
+		return format == "png"
+	case ".jpg", ".jpeg":
+		return format == "jpeg"
+	case ".webp":
+		return format == "webp"
 	default:
 		return false
 	}

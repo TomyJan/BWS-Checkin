@@ -3,6 +3,10 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"image/png"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -37,6 +41,25 @@ func TestDevLoginAndMe(t *testing.T) {
 		t.Fatalf("me status = %d", w.Code)
 	}
 	assertOK(t, w)
+}
+
+func TestSessionRejectsTamperedCookie(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true, Session: SessionConfig{Secret: "test-secret"}})
+	cookies := loginForTest(t, h, "TomyJan")
+	if len(cookies) == 0 {
+		t.Fatal("expected login cookie")
+	}
+
+	me := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	tampered := *cookies[0]
+	tampered.Value = "999." + tampered.Value
+	me.AddCookie(&tampered)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, me)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("me status = %d, want 401", w.Code)
+	}
 }
 
 func TestMeRequiresLogin(t *testing.T) {
@@ -428,7 +451,7 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: uploadDir})
 	cookies := loginForTest(t, h, "TomyJan")
 
-	req := multipartRequest(t, "/api/v1/me/qr/upload", "qr.png", []byte{0x89, 'P', 'N', 'G'})
+	req := multipartRequest(t, "/api/v1/me/qr/upload", "qr.png", validPNG(t))
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
@@ -456,6 +479,23 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 		t.Fatalf("expected uploaded file to exist: %v", err)
 	}
 
+	req = multipartRequest(t, "/api/v1/me/qr/upload", "qr.jpg", validJPEG(t))
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("replace upload status = %d, body = %s", w.Code, w.Body.String())
+	}
+	assertOK(t, w)
+	if _, err := os.Stat(filepath.Join(uploadDir, "1.png")); !os.IsNotExist(err) {
+		t.Fatalf("expected old png to be removed after replacement, stat err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(uploadDir, "1.jpg")); err != nil {
+		t.Fatalf("expected replacement jpg to exist: %v", err)
+	}
+
 	deleteReq := httptest.NewRequest(http.MethodPost, "/api/v1/me/qr/delete", nil)
 	for _, c := range cookies {
 		deleteReq.AddCookie(c)
@@ -466,7 +506,7 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 		t.Fatalf("delete status = %d, body = %s", w.Code, w.Body.String())
 	}
 	assertOK(t, w)
-	if _, err := os.Stat(filepath.Join(uploadDir, "1.png")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(uploadDir, "1.jpg")); !os.IsNotExist(err) {
 		t.Fatalf("expected uploaded file to be removed, stat err = %v", err)
 	}
 
@@ -483,6 +523,23 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 	if strings.Contains(w.Body.String(), "/uploads/") {
 		t.Fatalf("expected qrImageUrl to be cleared, got %s", w.Body.String())
 	}
+}
+
+func TestQRUploadRejectsInvalidImageContent(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: t.TempDir()})
+	cookies := loginForTest(t, h, "TomyJan")
+
+	req := multipartRequest(t, "/api/v1/me/qr/upload", "qr.png", []byte("not an image"))
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload status = %d, body = %s", w.Code, w.Body.String())
+	}
+	assertBusinessError(t, w, "invalid_image")
 }
 
 func newTestStore(t *testing.T) *store.Store {
@@ -620,6 +677,28 @@ func multipartRequest(t *testing.T, path string, filename string, content []byte
 	req := httptest.NewRequest(http.MethodPost, path, &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req
+}
+
+func validPNG(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	img.Set(0, 0, color.White)
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode png: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func validJPEG(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	img.Set(0, 0, color.White)
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatalf("encode jpeg: %v", err)
+	}
+	return buf.Bytes()
 }
 
 func newOIDCTestProvider(t *testing.T) *httptest.Server {

@@ -102,7 +102,7 @@ func (h Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to upsert OIDC user", http.StatusInternalServerError)
 		return
 	}
-	setSession(w, user.ID)
+	h.setSession(w, user.ID)
 	clearOIDCState(w)
 	http.Redirect(w, r, h.postLoginRedirect(), http.StatusFound)
 }

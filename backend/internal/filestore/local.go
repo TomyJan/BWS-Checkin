@@ -27,3 +27,10 @@ func (l Local) SaveQR(userID int64, ext string, src io.Reader) (string, error) {
 	}
 	return "/uploads/" + name, nil
 }
+
+func (l Local) DeleteURL(url string) error {
+	if url == "" || l.Dir == "" {
+		return nil
+	}
+	return os.Remove(filepath.Join(l.Dir, filepath.Base(url)))
+}
