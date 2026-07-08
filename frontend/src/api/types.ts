@@ -14,3 +14,11 @@ export interface Group {
   memberCount: number;
   taskCount: number;
 }
+
+export interface MeResponse {
+  user: User;
+}
+
+export interface GroupsResponse {
+  groups: Group[] | null;
+}
