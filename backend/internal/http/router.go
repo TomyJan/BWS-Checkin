@@ -17,6 +17,14 @@ func NewRouter(deps Deps) http.Handler {
 		r.Post("/dev/login", h.devLogin)
 		r.Post("/logout", h.logout)
 		r.Get("/me", h.me)
+		r.Get("/groups", h.listGroups)
+		r.Post("/groups", h.createGroup)
+		r.Get("/groups/{groupId}", h.groupDetail)
+		r.Post("/groups/{groupId}/join", h.joinGroup)
+		r.Delete("/groups/{groupId}/members/{userId}", h.removeMember)
+		r.Get("/groups/{groupId}/tasks", h.groupTasks)
+		r.Post("/groups/{groupId}/tasks/{taskId}/members/{userId}/complete", h.completeTask)
+		r.Delete("/groups/{groupId}/tasks/{taskId}/members/{userId}/complete", h.uncompleteTask)
 	})
 	return r
 }

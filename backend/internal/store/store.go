@@ -170,6 +170,37 @@ func (s *Store) UserGroups(ctx context.Context, userID int64) ([]domain.Group, e
 	return groups, rows.Err()
 }
 
+func (s *Store) GroupByID(ctx context.Context, groupID string, userID int64) (domain.Group, error) {
+	var group domain.Group
+	err := s.db.QueryRowContext(ctx, `
+		SELECT g.id, g.name, g.day, g.description, gm.role,
+			(SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
+			(SELECT COUNT(*) FROM tasks WHERE enabled = 1) AS task_count
+		FROM groups g
+		JOIN group_members gm ON gm.group_id = g.id
+		WHERE g.id = ? AND gm.user_id = ?
+	`, groupID, userID).Scan(&group.ID, &group.Name, &group.Day, &group.Description, &group.Role, &group.MemberCount, &group.TaskCount)
+	return group, err
+}
+
+func (s *Store) IsOwner(ctx context.Context, groupID string, userID int64) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM group_members
+		WHERE group_id = ? AND user_id = ? AND role = 'owner'
+	`, groupID, userID).Scan(&count)
+	return count > 0, err
+}
+
+func (s *Store) RemoveMember(ctx context.Context, groupID string, userID int64) error {
+	_, err := s.db.ExecContext(ctx, `
+		DELETE FROM group_members
+		WHERE group_id = ? AND user_id = ? AND role != 'owner'
+	`, groupID, userID)
+	return err
+}
+
 func (s *Store) GroupTasks(ctx context.Context, groupID string) ([]domain.TaskStatus, error) {
 	members, err := s.groupMembers(ctx, groupID)
 	if err != nil {
@@ -204,6 +235,14 @@ func (s *Store) MarkComplete(ctx context.Context, groupID string, taskID string,
 		INSERT OR IGNORE INTO task_completions (group_id, task_id, target_user_id, checked_by_user_id)
 		VALUES (?, ?, ?, ?)
 	`, groupID, taskID, targetUserID, checkedByUserID)
+	return err
+}
+
+func (s *Store) UnmarkComplete(ctx context.Context, groupID string, taskID string, targetUserID int64) error {
+	_, err := s.db.ExecContext(ctx, `
+		DELETE FROM task_completions
+		WHERE group_id = ? AND task_id = ? AND target_user_id = ?
+	`, groupID, taskID, targetUserID)
 	return err
 }
 
