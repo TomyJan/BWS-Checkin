@@ -244,6 +244,10 @@ func (h Handler) removeMember(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "owner_role_required", "owner role required")
 		return
 	}
+	if input.UserID == user.ID {
+		writeBusinessError(w, "owner_remove_forbidden", "owner cannot remove self")
+		return
+	}
 	if err := h.deps.Store.RemoveMember(r.Context(), groupID, input.UserID); err != nil {
 		writeBusinessError(w, "member_remove_failed", err.Error())
 		return
