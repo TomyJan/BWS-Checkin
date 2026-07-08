@@ -70,8 +70,8 @@ module bws-checkin/backend
 go 1.25
 
 require (
-	github.com/go-chi/chi/v5 v5.2.2
-	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/go-chi/chi/v5 v5.3.1
+	modernc.org/sqlite v1.53.0
 )
 ```
 
@@ -391,7 +391,7 @@ import (
 	"path/filepath"
 
 	"bws-checkin/backend/internal/domain"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 //go:embed schema.sql
@@ -413,7 +413,7 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite3", path+"?_foreign_keys=on")
+	db, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +426,7 @@ func Open(path string) (*Store, error) {
 }
 
 func OpenMemory() (*Store, error) {
-	db, err := sql.Open("sqlite3", ":memory:?_foreign_keys=on")
+	db, err := sql.Open("sqlite", ":memory:?_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}
