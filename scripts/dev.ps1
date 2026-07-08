@@ -13,7 +13,7 @@ Start-Process powershell -WindowStyle Hidden -WorkingDirectory $backend -Argumen
 Start-Process powershell -WindowStyle Hidden -WorkingDirectory $frontend -ArgumentList @(
   "-NoExit",
   "-Command",
-  "npm run dev"
+  "pnpm dev"
 )
 
 Write-Host "Backend:  http://127.0.0.1:8080"
