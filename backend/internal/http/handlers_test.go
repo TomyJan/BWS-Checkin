@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -300,7 +302,8 @@ func TestQRUploadRequiresLogin(t *testing.T) {
 
 func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 	s := newTestStore(t)
-	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: t.TempDir()})
+	uploadDir := t.TempDir()
+	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: uploadDir})
 	cookies := loginForTest(t, h, "TomyJan")
 
 	req := multipartRequest(t, "/api/v1/me/qr/upload", "qr.png", []byte{0x89, 'P', 'N', 'G'})
@@ -326,6 +329,37 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 	assertOK(t, w)
 	if !strings.Contains(w.Body.String(), "/uploads/") {
 		t.Fatalf("expected qrImageUrl in response, got %s", w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(uploadDir, "1.png")); err != nil {
+		t.Fatalf("expected uploaded file to exist: %v", err)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodPost, "/api/v1/me/qr/delete", nil)
+	for _, c := range cookies {
+		deleteReq.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, deleteReq)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, body = %s", w.Code, w.Body.String())
+	}
+	assertOK(t, w)
+	if _, err := os.Stat(filepath.Join(uploadDir, "1.png")); !os.IsNotExist(err) {
+		t.Fatalf("expected uploaded file to be removed, stat err = %v", err)
+	}
+
+	me = httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	for _, c := range cookies {
+		me.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, me)
+	if w.Code != http.StatusOK {
+		t.Fatalf("me status after delete = %d", w.Code)
+	}
+	assertOK(t, w)
+	if strings.Contains(w.Body.String(), "/uploads/") {
+		t.Fatalf("expected qrImageUrl to be cleared, got %s", w.Body.String())
 	}
 }
 

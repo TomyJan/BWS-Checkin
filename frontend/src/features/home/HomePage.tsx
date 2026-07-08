@@ -1,4 +1,6 @@
 import AddIcon from "@mui/icons-material/Add";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import DeleteIcon from "@mui/icons-material/Delete";
 import GroupsIcon from "@mui/icons-material/Groups";
 import {
   Box,
@@ -16,7 +18,7 @@ import {
   Tooltip,
   Typography
 } from "@mui/material";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
@@ -32,6 +34,7 @@ const dayLabel: Record<string, string> = {
 
 export function HomePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -42,6 +45,19 @@ export function HomePage() {
 
   function goToGroup(group: Group) {
     navigate(`/groups/${group.id}`);
+  }
+
+  async function uploadQR(file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    await api("/me/qr/upload", { method: "POST", body: form });
+    await queryClient.invalidateQueries({ queryKey: ["me"] });
+  }
+
+  async function deleteQR() {
+    setMenuAnchor(null);
+    await api("/me/qr/delete", { method: "POST" });
+    await queryClient.invalidateQueries({ queryKey: ["me"] });
   }
 
   return (
@@ -94,6 +110,32 @@ export function HomePage() {
               </ListItemIcon>
               <ListItemText>加入互助组</ListItemText>
             </MenuItem>
+            {me.data?.user.qrImageUrl && (
+              <MenuItem component="label">
+                <ListItemIcon>
+                  <CloudUploadIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>更新二维码</ListItemText>
+                <input
+                  hidden
+                  accept="image/png,image/jpeg,image/webp"
+                  type="file"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    setMenuAnchor(null);
+                    if (file) void uploadQR(file);
+                  }}
+                />
+              </MenuItem>
+            )}
+            {me.data?.user.qrImageUrl && (
+              <MenuItem onClick={() => void deleteQR()}>
+                <ListItemIcon>
+                  <DeleteIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>删除二维码</ListItemText>
+              </MenuItem>
+            )}
           </Menu>
 
           <Stack spacing={1.5}>
