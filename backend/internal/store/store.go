@@ -221,14 +221,18 @@ func (s *Store) JoinGroup(ctx context.Context, groupID string, userID int64) err
 	return err
 }
 
-func (s *Store) UserGroups(ctx context.Context, userID int64) ([]domain.Group, error) {
+func (s *Store) UserGroups(ctx context.Context, userID int64, includeArchived bool) ([]domain.Group, error) {
+	archiveFilter := "AND g.archived_at = ''"
+	if includeArchived {
+		archiveFilter = ""
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT g.id, g.name, g.day, g.description, gm.role, g.join_locked, g.archived_at,
 			(SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
 			(SELECT COUNT(*) FROM tasks WHERE enabled = 1) AS task_count
 		FROM groups g
 		JOIN group_members gm ON gm.group_id = g.id
-		WHERE gm.user_id = ?
+		WHERE gm.user_id = ? `+archiveFilter+`
 		ORDER BY g.created_at DESC
 	`, userID)
 	if err != nil {

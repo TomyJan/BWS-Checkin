@@ -147,12 +147,20 @@ type createGroupRequest struct {
 	Description string `json:"description"`
 }
 
+type updateGroupRequest struct {
+	GroupID     string `json:"groupId"`
+	Name        string `json:"name"`
+	Day         string `json:"day"`
+	Description string `json:"description"`
+}
+
 func (h Handler) listGroups(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.currentUser(w, r)
 	if !ok {
 		return
 	}
-	groups, err := h.deps.Store.UserGroups(r.Context(), user.ID)
+	includeArchived := r.URL.Query().Get("includeArchived") == "1" || r.URL.Query().Get("includeArchived") == "true"
+	groups, err := h.deps.Store.UserGroups(r.Context(), user.ID, includeArchived)
 	if err != nil {
 		writeBusinessError(w, "groups_load_failed", err.Error())
 		return
@@ -189,6 +197,95 @@ func (h Handler) createGroup(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, map[string]domain.Group{"group": group})
 }
 
+func (h Handler) updateGroup(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var input updateGroupRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeBusinessError(w, "invalid_json", "invalid JSON")
+		return
+	}
+	if input.GroupID == "" || input.Name == "" || input.Day == "" {
+		writeBusinessError(w, "invalid_group_input", "groupId, name and day are required")
+		return
+	}
+	if !h.requireOwner(w, r, input.GroupID, user.ID) {
+		return
+	}
+	if err := h.deps.Store.UpdateGroup(r.Context(), store.UpdateGroupInput{
+		ID: input.GroupID, Name: input.Name, Day: input.Day, Description: input.Description,
+	}); err != nil {
+		writeBusinessError(w, "group_update_failed", err.Error())
+		return
+	}
+	group, err := h.deps.Store.GroupByID(r.Context(), input.GroupID, user.ID)
+	if err != nil {
+		writeNotFoundOrForbidden(w, err)
+		return
+	}
+	writeOK(w, map[string]domain.Group{"group": group})
+}
+
+func (h Handler) lockGroupJoin(w http.ResponseWriter, r *http.Request) {
+	h.setGroupJoinLocked(w, r, true)
+}
+
+func (h Handler) unlockGroupJoin(w http.ResponseWriter, r *http.Request) {
+	h.setGroupJoinLocked(w, r, false)
+}
+
+func (h Handler) setGroupJoinLocked(w http.ResponseWriter, r *http.Request, locked bool) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var input groupIDRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeBusinessError(w, "invalid_json", "invalid JSON")
+		return
+	}
+	if !h.requireOwner(w, r, input.GroupID, user.ID) {
+		return
+	}
+	if err := h.deps.Store.SetGroupJoinLocked(r.Context(), input.GroupID, locked); err != nil {
+		writeBusinessError(w, "group_join_lock_failed", err.Error())
+		return
+	}
+	group, err := h.deps.Store.GroupByID(r.Context(), input.GroupID, user.ID)
+	if err != nil {
+		writeNotFoundOrForbidden(w, err)
+		return
+	}
+	writeOK(w, map[string]domain.Group{"group": group})
+}
+
+func (h Handler) archiveGroup(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var input groupIDRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeBusinessError(w, "invalid_json", "invalid JSON")
+		return
+	}
+	if !h.requireOwner(w, r, input.GroupID, user.ID) {
+		return
+	}
+	if err := h.deps.Store.ArchiveGroup(r.Context(), input.GroupID); err != nil {
+		writeBusinessError(w, "group_archive_failed", err.Error())
+		return
+	}
+	group, err := h.deps.Store.GroupByID(r.Context(), input.GroupID, user.ID)
+	if err != nil {
+		writeNotFoundOrForbidden(w, err)
+		return
+	}
+	writeOK(w, map[string]domain.Group{"group": group})
+}
+
 func (h Handler) groupDetail(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.currentUser(w, r)
 	if !ok {
@@ -214,6 +311,14 @@ func (h Handler) joinGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	groupID := input.GroupID
 	if err := h.deps.Store.JoinGroup(r.Context(), groupID, user.ID); err != nil {
+		if errors.Is(err, store.ErrGroupArchived) {
+			writeBusinessError(w, "group_archived", err.Error())
+			return
+		}
+		if errors.Is(err, store.ErrGroupJoinLocked) {
+			writeBusinessError(w, "group_join_locked", err.Error())
+			return
+		}
 		writeBusinessError(w, "group_join_failed", err.Error())
 		return
 	}
@@ -297,6 +402,10 @@ func (h Handler) completeTask(w http.ResponseWriter, r *http.Request) {
 		Completed:       true,
 		UpdatedAt:       input.syncTime(),
 	}); err != nil {
+		if errors.Is(err, store.ErrGroupArchived) {
+			writeBusinessError(w, "group_archived", err.Error())
+			return
+		}
 		writeBusinessError(w, "task_complete_failed", err.Error())
 		return
 	}
@@ -326,6 +435,10 @@ func (h Handler) uncompleteTask(w http.ResponseWriter, r *http.Request) {
 		Completed:       false,
 		UpdatedAt:       input.syncTime(),
 	}); err != nil {
+		if errors.Is(err, store.ErrGroupArchived) {
+			writeBusinessError(w, "group_archived", err.Error())
+			return
+		}
 		writeBusinessError(w, "task_uncomplete_failed", err.Error())
 		return
 	}
@@ -344,6 +457,19 @@ func (h Handler) currentUser(w http.ResponseWriter, r *http.Request) (domain.Use
 		return domain.User{}, false
 	}
 	return user, true
+}
+
+func (h Handler) requireOwner(w http.ResponseWriter, r *http.Request, groupID string, userID int64) bool {
+	owner, err := h.deps.Store.IsOwner(r.Context(), groupID, userID)
+	if err != nil {
+		writeBusinessError(w, "owner_check_failed", err.Error())
+		return false
+	}
+	if !owner {
+		writeBusinessError(w, "owner_role_required", "owner role required")
+		return false
+	}
+	return true
 }
 
 func allowedImageExt(ext string) bool {

@@ -288,6 +288,128 @@ func TestOwnerRemovesMemberAndMemberCannotRemove(t *testing.T) {
 	}
 }
 
+func TestGroupManagementRequiresOwnerAndControlsJoinArchive(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true})
+	ownerCookies := loginForTest(t, h, "Owner")
+	memberCookies := loginForTest(t, h, "Member")
+	lateCookies := loginForTest(t, h, "Late")
+	memberID := userIDForCookies(t, h, memberCookies)
+
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/create", map[string]any{
+		"id": "bw2026-fri", "name": "BW2026 周五", "day": "friday",
+	})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/join", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range memberCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/update", map[string]any{
+		"groupId": "bw2026-fri", "name": "BW2026 周六", "day": "saturday", "description": "更新后的说明",
+	})
+	for _, c := range memberCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertBusinessError(t, w, "owner_role_required")
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/update", map[string]any{
+		"groupId": "bw2026-fri", "name": "BW2026 周六", "day": "saturday", "description": "更新后的说明",
+	})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), "BW2026 周六") || !strings.Contains(w.Body.String(), "更新后的说明") {
+		t.Fatalf("expected updated group in response, got %s", w.Body.String())
+	}
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/join-lock", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/join", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range lateCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertBusinessError(t, w, "group_join_locked")
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/join-unlock", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/archive", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/join", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range lateCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertBusinessError(t, w, "group_archived")
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/task/complete", map[string]any{
+		"groupId": "bw2026-fri", "taskId": "rainbow-station", "userId": memberID,
+	})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertBusinessError(t, w, "group_archived")
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/group/list", nil)
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	if strings.Contains(w.Body.String(), "bw2026-fri") {
+		t.Fatalf("archived group should be hidden by default, got %s", w.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/group/list?includeArchived=1", nil)
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), "bw2026-fri") {
+		t.Fatalf("archived group should be listed with includeArchived=1, got %s", w.Body.String())
+	}
+}
+
 func TestQRUploadRequiresLogin(t *testing.T) {
 	s := newTestStore(t)
 	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: t.TempDir()})
