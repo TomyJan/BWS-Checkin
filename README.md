@@ -18,8 +18,8 @@ go run ./cmd/server
 
 ```powershell
 cd frontend
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 前端默认监听 `http://127.0.0.1:5173`，并通过 Vite proxy 转发 `/api`、`/auth` 和 `/uploads` 到后端。
@@ -42,7 +42,7 @@ go test ./...
 
 ```powershell
 cd frontend
-npm run build
+pnpm build
 ```
 
 ## 开发登录
