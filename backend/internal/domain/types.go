@@ -10,13 +10,15 @@ type User struct {
 }
 
 type Group struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Day         string `json:"day"`
-	Description string `json:"description"`
-	Role        string `json:"role"`
-	MemberCount int    `json:"memberCount"`
-	TaskCount   int    `json:"taskCount"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Day         string     `json:"day"`
+	Description string     `json:"description"`
+	Role        string     `json:"role"`
+	MemberCount int        `json:"memberCount"`
+	TaskCount   int        `json:"taskCount"`
+	JoinLocked  bool       `json:"joinLocked"`
+	ArchivedAt  *time.Time `json:"archivedAt"`
 }
 
 type Member struct {

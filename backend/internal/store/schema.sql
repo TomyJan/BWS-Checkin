@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS groups (
   day TEXT NOT NULL CHECK (day IN ('friday', 'saturday', 'sunday')),
   description TEXT NOT NULL DEFAULT '',
   owner_user_id INTEGER NOT NULL REFERENCES users(id),
+  join_locked INTEGER NOT NULL DEFAULT 0,
+  archived_at TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

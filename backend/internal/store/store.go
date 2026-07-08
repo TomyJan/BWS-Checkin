@@ -22,12 +22,24 @@ type Store struct {
 	db *sql.DB
 }
 
+var (
+	ErrGroupJoinLocked = errors.New("group join locked")
+	ErrGroupArchived   = errors.New("group archived")
+)
+
 type CreateGroupInput struct {
 	ID          string
 	Name        string
 	Day         string
 	Description string
 	OwnerUserID int64
+}
+
+type UpdateGroupInput struct {
+	ID          string
+	Name        string
+	Day         string
+	Description string
 }
 
 type SyncTaskCompletionInput struct {
@@ -86,12 +98,22 @@ func (s *Store) migrate() error {
 	if err := s.ensureTaskCompletionColumn("updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := s.ensureColumn("groups", "join_locked", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("groups", "archived_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	_, err = s.db.Exec(`UPDATE task_completions SET updated_at = completed_at WHERE updated_at = ''`)
 	return err
 }
 
 func (s *Store) ensureTaskCompletionColumn(name string, definition string) error {
-	rows, err := s.db.Query(`PRAGMA table_info(task_completions)`)
+	return s.ensureColumn("task_completions", name, definition)
+}
+
+func (s *Store) ensureColumn(table string, name string, definition string) error {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
 		return err
 	}
@@ -113,7 +135,7 @@ func (s *Store) ensureTaskCompletionColumn(name string, definition string) error
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`ALTER TABLE task_completions ADD COLUMN ` + name + ` ` + definition)
+	_, err = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + name + ` ` + definition)
 	return err
 }
 
@@ -182,7 +204,17 @@ func (s *Store) CreateGroup(ctx context.Context, input CreateGroupInput) error {
 }
 
 func (s *Store) JoinGroup(ctx context.Context, groupID string, userID int64) error {
-	_, err := s.db.ExecContext(ctx, `
+	joinLocked, archived, err := s.groupFlags(ctx, groupID)
+	if err != nil {
+		return err
+	}
+	if archived {
+		return ErrGroupArchived
+	}
+	if joinLocked {
+		return ErrGroupJoinLocked
+	}
+	_, err = s.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO group_members (group_id, user_id, role)
 		VALUES (?, ?, 'member')
 	`, groupID, userID)
@@ -191,7 +223,7 @@ func (s *Store) JoinGroup(ctx context.Context, groupID string, userID int64) err
 
 func (s *Store) UserGroups(ctx context.Context, userID int64) ([]domain.Group, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT g.id, g.name, g.day, g.description, gm.role,
+		SELECT g.id, g.name, g.day, g.description, gm.role, g.join_locked, g.archived_at,
 			(SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
 			(SELECT COUNT(*) FROM tasks WHERE enabled = 1) AS task_count
 		FROM groups g
@@ -207,9 +239,23 @@ func (s *Store) UserGroups(ctx context.Context, userID int64) ([]domain.Group, e
 	var groups []domain.Group
 	for rows.Next() {
 		var group domain.Group
-		if err := rows.Scan(&group.ID, &group.Name, &group.Day, &group.Description, &group.Role, &group.MemberCount, &group.TaskCount); err != nil {
+		var joinLocked int
+		var archivedAt string
+		if err := rows.Scan(
+			&group.ID,
+			&group.Name,
+			&group.Day,
+			&group.Description,
+			&group.Role,
+			&joinLocked,
+			&archivedAt,
+			&group.MemberCount,
+			&group.TaskCount,
+		); err != nil {
 			return nil, err
 		}
+		group.JoinLocked = joinLocked == 1
+		group.ArchivedAt = parseOptionalTime(archivedAt)
 		groups = append(groups, group)
 	}
 	return groups, rows.Err()
@@ -217,15 +263,60 @@ func (s *Store) UserGroups(ctx context.Context, userID int64) ([]domain.Group, e
 
 func (s *Store) GroupByID(ctx context.Context, groupID string, userID int64) (domain.Group, error) {
 	var group domain.Group
+	var joinLocked int
+	var archivedAt string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT g.id, g.name, g.day, g.description, gm.role,
+		SELECT g.id, g.name, g.day, g.description, gm.role, g.join_locked, g.archived_at,
 			(SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
 			(SELECT COUNT(*) FROM tasks WHERE enabled = 1) AS task_count
 		FROM groups g
 		JOIN group_members gm ON gm.group_id = g.id
 		WHERE g.id = ? AND gm.user_id = ?
-	`, groupID, userID).Scan(&group.ID, &group.Name, &group.Day, &group.Description, &group.Role, &group.MemberCount, &group.TaskCount)
+	`, groupID, userID).Scan(
+		&group.ID,
+		&group.Name,
+		&group.Day,
+		&group.Description,
+		&group.Role,
+		&joinLocked,
+		&archivedAt,
+		&group.MemberCount,
+		&group.TaskCount,
+	)
+	group.JoinLocked = joinLocked == 1
+	group.ArchivedAt = parseOptionalTime(archivedAt)
 	return group, err
+}
+
+func (s *Store) UpdateGroup(ctx context.Context, input UpdateGroupInput) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE groups
+		SET name = ?, day = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, input.Name, input.Day, input.Description, input.ID)
+	return err
+}
+
+func (s *Store) SetGroupJoinLocked(ctx context.Context, groupID string, locked bool) error {
+	value := 0
+	if locked {
+		value = 1
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE groups
+		SET join_locked = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, value, groupID)
+	return err
+}
+
+func (s *Store) ArchiveGroup(ctx context.Context, groupID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE groups
+		SET archived_at = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND archived_at = ''
+	`, time.Now().UTC().Format(time.RFC3339Nano), groupID)
+	return err
 }
 
 func (s *Store) IsOwner(ctx context.Context, groupID string, userID int64) (bool, error) {
@@ -300,6 +391,11 @@ func (s *Store) UnmarkComplete(ctx context.Context, groupID string, taskID strin
 }
 
 func (s *Store) SyncTaskCompletion(ctx context.Context, input SyncTaskCompletionInput) error {
+	if _, archived, err := s.groupFlags(ctx, input.GroupID); err != nil {
+		return err
+	} else if archived {
+		return ErrGroupArchived
+	}
 	updatedAt := input.UpdatedAt.UTC()
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
@@ -330,6 +426,20 @@ func scanUser(row *sql.Row) (domain.User, error) {
 		return domain.User{}, err
 	}
 	return user, nil
+}
+
+func (s *Store) groupFlags(ctx context.Context, groupID string) (bool, bool, error) {
+	var joinLocked int
+	var archivedAt string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT join_locked, archived_at
+		FROM groups
+		WHERE id = ?
+	`, groupID).Scan(&joinLocked, &archivedAt)
+	if err != nil {
+		return false, false, err
+	}
+	return joinLocked == 1, archivedAt != "", nil
 }
 
 func (s *Store) groupMembers(ctx context.Context, groupID string) ([]domain.Member, error) {
@@ -428,4 +538,11 @@ func parseSQLiteTime(value string) *time.Time {
 		}
 	}
 	return nil
+}
+
+func parseOptionalTime(value string) *time.Time {
+	if value == "" {
+		return nil
+	}
+	return parseSQLiteTime(value)
 }
