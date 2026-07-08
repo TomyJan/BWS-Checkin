@@ -46,6 +46,10 @@ export async function flushCompletionQueue() {
   return remaining.length;
 }
 
+export function pendingCompletionCount() {
+  return readQueue().length;
+}
+
 export function applyCompletionToTasks(tasks: TaskStatus[], action: Omit<PendingCompletion, "id">, checkedBy: User): TaskStatus[] {
   return tasks.map((task) => {
     if (task.id !== action.taskId) return task;

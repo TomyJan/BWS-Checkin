@@ -27,13 +27,14 @@ import {
   Typography
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { GroupResponse, MeResponse, MemberCompletion, TasksResponse, TaskStatus, User } from "../../api/types";
 import {
   applyCompletionToTasks,
   flushCompletionQueue,
+  pendingCompletionCount,
   queueCompletion,
   trySyncCompletion,
   type PendingCompletion
@@ -51,6 +52,10 @@ export function GroupPage() {
   const [offlineSnapshot, setOfflineSnapshot] = useState(false);
   const [manageAnchor, setManageAnchor] = useState<HTMLElement | null>(null);
   const [copyMessage, setCopyMessage] = useState("");
+  const [pendingCount, setPendingCount] = useState(() => pendingCompletionCount());
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const pointerStartX = useRef<number | null>(null);
+  const suppressNextToggle = useRef(false);
   const me = queryClient.getQueryData<MeResponse>(["me"]);
 
   const group = useQuery({
@@ -103,6 +108,7 @@ export function GroupPage() {
         return { action, synced: true };
       } catch {
         queueCompletion(action);
+        setPendingCount(pendingCompletionCount());
         return { action, synced: false };
       }
     },
@@ -122,6 +128,7 @@ export function GroupPage() {
     },
     onSuccess: ({ synced }) => {
       if (synced) void queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] });
+      if (!synced) setCopyMessage("已离线保存，联网后自动同步");
     }
   });
 
@@ -178,6 +185,20 @@ export function GroupPage() {
     return isOwner && entry.member.id !== me?.user.id;
   }
 
+  function handlePointerDown(event: PointerEvent<HTMLElement>) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    pointerStartX.current = event.clientX;
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLElement>) {
+    if (pointerStartX.current === null) return;
+    const delta = event.clientX - pointerStartX.current;
+    pointerStartX.current = null;
+    if (Math.abs(delta) < 48) return;
+    suppressNextToggle.current = true;
+    shiftMember(delta > 0 ? -1 : 1);
+  }
+
   useEffect(() => {
     const groupValue = group.data?.group;
     if (!groupValue || !tasksQuery.data?.tasks) return;
@@ -186,15 +207,45 @@ export function GroupPage() {
 
   useEffect(() => {
     async function syncPending() {
+      const before = pendingCompletionCount();
       const remaining = await flushCompletionQueue();
+      setPendingCount(remaining);
       if (remaining === 0) {
         await queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] });
+        if (before > 0) setCopyMessage("离线变更已同步");
       }
     }
     if (navigator.onLine) void syncPending();
-    window.addEventListener("online", syncPending);
-    return () => window.removeEventListener("online", syncPending);
+    function handleOnline() {
+      setIsOnline(true);
+      void syncPending();
+    }
+    function handleOffline() {
+      setIsOnline(false);
+    }
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, [groupId, queryClient]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (taskPickerOpen || manageAnchor) return;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        shiftMember(-1);
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        shiftMember(1);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [manageAnchor, members.length, taskPickerOpen]);
 
   const completedLabel = useMemo(() => {
     if (!currentMember?.completedAt) return "";
@@ -214,7 +265,18 @@ export function GroupPage() {
   }
 
   return (
-    <Box className={`qr-viewer ${uiVisible ? "ui-visible" : "ui-hidden"}`} onClick={() => setUiVisible((visible) => !visible)}>
+    <Box
+      className={`qr-viewer ${uiVisible ? "ui-visible" : "ui-hidden"}`}
+      onClick={() => {
+        if (suppressNextToggle.current) {
+          suppressNextToggle.current = false;
+          return;
+        }
+        setUiVisible((visible) => !visible);
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+    >
       <Box className="qr-photo-stage">
         {currentMember?.member.qrImageUrl ? (
           <img className="qr-photo-img" src={currentMember.member.qrImageUrl} alt={`${currentMember.member.displayName} 的二维码`} />
@@ -244,7 +306,9 @@ export function GroupPage() {
             </Box>
           </Stack>
           <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
+            {!isOnline && <Chip label="离线" color="warning" size="small" />}
             {offlineSnapshot && <Chip label="离线快照" color="warning" size="small" />}
+            {pendingCount > 0 && <Chip label={`待同步 ${pendingCount}`} color="info" size="small" />}
             {isOwner && (
               <IconButton color="inherit" onClick={(event) => setManageAnchor(event.currentTarget)}>
                 <MoreVertIcon />
