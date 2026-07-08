@@ -42,6 +42,26 @@ type UpdateGroupInput struct {
 	Description string
 }
 
+type AuditLogInput struct {
+	ActorUserID  int64
+	Action       string
+	GroupID      string
+	TargetUserID int64
+	TaskID       string
+	Metadata     string
+}
+
+type AuditLog struct {
+	ID           int64
+	ActorUserID  int64
+	Action       string
+	GroupID      string
+	TargetUserID int64
+	TaskID       string
+	Metadata     string
+	CreatedAt    string
+}
+
 type SyncTaskCompletionInput struct {
 	GroupID         string
 	TaskID          string
@@ -102,6 +122,20 @@ func (s *Store) migrate() error {
 		return err
 	}
 	if err := s.ensureColumn("groups", "archived_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS audit_logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			actor_user_id INTEGER NOT NULL REFERENCES users(id),
+			action TEXT NOT NULL,
+			group_id TEXT NOT NULL DEFAULT '',
+			target_user_id INTEGER,
+			task_id TEXT NOT NULL DEFAULT '',
+			metadata TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`); err != nil {
 		return err
 	}
 	_, err = s.db.Exec(`UPDATE task_completions SET updated_at = completed_at WHERE updated_at = ''`)
@@ -321,6 +355,52 @@ func (s *Store) ArchiveGroup(ctx context.Context, groupID string) error {
 		WHERE id = ? AND archived_at = ''
 	`, time.Now().UTC().Format(time.RFC3339Nano), groupID)
 	return err
+}
+
+func (s *Store) AppendAuditLog(ctx context.Context, input AuditLogInput) error {
+	metadata := input.Metadata
+	if metadata == "" {
+		metadata = "{}"
+	}
+	var target any
+	if input.TargetUserID != 0 {
+		target = input.TargetUserID
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO audit_logs (actor_user_id, action, group_id, target_user_id, task_id, metadata)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, input.ActorUserID, input.Action, input.GroupID, target, input.TaskID, metadata)
+	return err
+}
+
+func (s *Store) AuditLogs(ctx context.Context) ([]AuditLog, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, actor_user_id, action, group_id, COALESCE(target_user_id, 0), task_id, metadata, created_at
+		FROM audit_logs
+		ORDER BY id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var logs []AuditLog
+	for rows.Next() {
+		var log AuditLog
+		if err := rows.Scan(
+			&log.ID,
+			&log.ActorUserID,
+			&log.Action,
+			&log.GroupID,
+			&log.TargetUserID,
+			&log.TaskID,
+			&log.Metadata,
+			&log.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		logs = append(logs, log)
+	}
+	return logs, rows.Err()
 }
 
 func (s *Store) IsOwner(ctx context.Context, groupID string, userID int64) (bool, error) {

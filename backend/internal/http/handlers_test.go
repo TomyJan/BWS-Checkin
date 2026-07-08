@@ -433,6 +433,89 @@ func TestGroupManagementRequiresOwnerAndControlsJoinArchive(t *testing.T) {
 	}
 }
 
+func TestAuditLogsKeyBusinessActions(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: t.TempDir()})
+	ownerCookies := loginForTest(t, h, "Owner")
+	memberCookies := loginForTest(t, h, "Member")
+	memberID := userIDForCookies(t, h, memberCookies)
+
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/create", map[string]any{
+		"id": "bw2026-fri", "name": "BW2026 周五", "day": "friday",
+	})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/join", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range memberCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	actions := []struct {
+		path string
+		body map[string]any
+	}{
+		{"/api/v1/group/update", map[string]any{"groupId": "bw2026-fri", "name": "BW2026 周六", "day": "saturday"}},
+		{"/api/v1/group/join-lock", map[string]any{"groupId": "bw2026-fri"}},
+		{"/api/v1/group/join-unlock", map[string]any{"groupId": "bw2026-fri"}},
+		{"/api/v1/task/complete", map[string]any{"groupId": "bw2026-fri", "taskId": "rainbow-station", "userId": memberID}},
+		{"/api/v1/task/uncomplete", map[string]any{"groupId": "bw2026-fri", "taskId": "rainbow-station", "userId": memberID}},
+		{"/api/v1/group/member/remove", map[string]any{"groupId": "bw2026-fri", "userId": memberID}},
+	}
+	for _, action := range actions {
+		req = jsonRequest(t, http.MethodPost, action.path, action.body)
+		for _, c := range ownerCookies {
+			req.AddCookie(c)
+		}
+		w = httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		assertOK(t, w)
+	}
+
+	req = multipartRequest(t, "/api/v1/me/qr/upload", "qr.png", validPNG(t))
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/me/qr/delete", nil)
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	logs, err := s.AuditLogs(t.Context())
+	if err != nil {
+		t.Fatalf("audit logs: %v", err)
+	}
+	wantActions := []string{
+		"group.update",
+		"group.join_lock",
+		"group.join_unlock",
+		"task.complete",
+		"task.uncomplete",
+		"group.member_remove",
+		"qr.upload",
+		"qr.delete",
+	}
+	for _, want := range wantActions {
+		if !hasAuditAction(logs, want) {
+			t.Fatalf("missing audit action %q in %+v", want, logs)
+		}
+	}
+}
+
 func TestQRUploadRequiresLogin(t *testing.T) {
 	s := newTestStore(t)
 	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: t.TempDir()})
@@ -647,6 +730,15 @@ func assertBusinessError(t *testing.T, w *httptest.ResponseRecorder, code string
 	if body.Error.Code != code {
 		t.Fatalf("error code = %q, want %q, body = %s", body.Error.Code, code, w.Body.String())
 	}
+}
+
+func hasAuditAction(logs []store.AuditLog, action string) bool {
+	for _, log := range logs {
+		if log.Action == action {
+			return true
+		}
+	}
+	return false
 }
 
 func jsonRequest(t *testing.T, method, path string, body any) *http.Request {

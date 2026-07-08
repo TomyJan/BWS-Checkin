@@ -46,6 +46,17 @@ CREATE TABLE IF NOT EXISTS task_completions (
   PRIMARY KEY (group_id, task_id, target_user_id)
 );
 
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_user_id INTEGER NOT NULL REFERENCES users(id),
+  action TEXT NOT NULL,
+  group_id TEXT NOT NULL DEFAULT '',
+  target_user_id INTEGER,
+  task_id TEXT NOT NULL DEFAULT '',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 INSERT OR IGNORE INTO tasks (id, name, sort_order, enabled) VALUES
   ('rainbow-station', '彩虹补给站', 10, 1),
   ('stage-support', '舞台应援任务', 20, 1),

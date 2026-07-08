@@ -60,9 +60,30 @@ $env:BWS_OIDC_ISSUER = "https://issuer.example.com"
 $env:BWS_OIDC_CLIENT_ID = "your-client-id"
 $env:BWS_OIDC_CLIENT_SECRET = "your-client-secret"
 $env:BWS_OIDC_REDIRECT_URL = "https://bws.example.com/auth/oidc/callback"
+$env:BWS_SESSION_SECRET = "replace-with-a-long-random-secret"
+$env:BWS_COOKIE_SECURE = "1"
+$env:BWS_COOKIE_SAMESITE = "lax"
 ```
 
 如果不设置 `BWS_OIDC_REDIRECT_URL`，默认使用 `BWS_PUBLIC_BASE + /auth/oidc/callback`。
+
+生产环境关闭 `BWS_DEV_AUTH` 后，服务启动时会校验 OIDC 和 `BWS_SESSION_SECRET`。缺少必要配置时后端会直接启动失败，避免以不完整鉴权配置对外提供服务。
+
+### Cookie 配置
+
+- `BWS_SESSION_SECRET`：Session Cookie 签名密钥。生产环境必须设置为足够长的随机字符串。
+- `BWS_COOKIE_SECURE`：设为 `1` 时只通过 HTTPS 发送 Cookie。
+- `BWS_COOKIE_SAMESITE`：支持 `lax`、`strict`、`none`，默认 `lax`。
+- `BWS_SESSION_MAX_AGE`：Session Cookie 有效期，单位：秒，默认 30 天。
+
+## 生产数据备份
+
+当前版本使用 SQLite 和本地文件存储。生产备份时必须同时备份：
+
+- `BWS_DB` 指向的 SQLite 数据库文件。
+- `BWS_UPLOAD_DIR` 指向的二维码上传目录。
+
+只备份数据库会丢失二维码图片；只备份上传目录会丢失用户、互助组和打卡状态。
 
 ## 离线使用
 

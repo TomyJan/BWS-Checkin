@@ -136,6 +136,7 @@ func (h Handler) uploadQR(w http.ResponseWriter, r *http.Request) {
 	if user.QRImageURL != "" && user.QRImageURL != url {
 		_ = files.DeleteURL(user.QRImageURL)
 	}
+	h.audit(r, user.ID, "qr.upload", "", user.ID, "")
 	updated, err := h.deps.Store.UserByID(r.Context(), user.ID)
 	if err != nil {
 		writeBusinessError(w, "current_user_load_failed", err.Error())
@@ -154,6 +155,7 @@ func (h Handler) deleteQR(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "qr_delete_failed", err.Error())
 		return
 	}
+	h.audit(r, user.ID, "qr.delete", "", user.ID, "")
 	writeOK(w, map[string]bool{"ok": true})
 }
 
@@ -237,6 +239,7 @@ func (h Handler) updateGroup(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "group_update_failed", err.Error())
 		return
 	}
+	h.audit(r, user.ID, "group.update", input.GroupID, 0, "")
 	group, err := h.deps.Store.GroupByID(r.Context(), input.GroupID, user.ID)
 	if err != nil {
 		writeNotFoundOrForbidden(w, err)
@@ -270,6 +273,11 @@ func (h Handler) setGroupJoinLocked(w http.ResponseWriter, r *http.Request, lock
 		writeBusinessError(w, "group_join_lock_failed", err.Error())
 		return
 	}
+	action := "group.join_unlock"
+	if locked {
+		action = "group.join_lock"
+	}
+	h.audit(r, user.ID, action, input.GroupID, 0, "")
 	group, err := h.deps.Store.GroupByID(r.Context(), input.GroupID, user.ID)
 	if err != nil {
 		writeNotFoundOrForbidden(w, err)
@@ -295,6 +303,7 @@ func (h Handler) archiveGroup(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "group_archive_failed", err.Error())
 		return
 	}
+	h.audit(r, user.ID, "group.archive", input.GroupID, 0, "")
 	group, err := h.deps.Store.GroupByID(r.Context(), input.GroupID, user.ID)
 	if err != nil {
 		writeNotFoundOrForbidden(w, err)
@@ -375,6 +384,7 @@ func (h Handler) removeMember(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "member_remove_failed", err.Error())
 		return
 	}
+	h.audit(r, user.ID, "group.member_remove", groupID, input.UserID, "")
 	writeOK(w, map[string]bool{"ok": true})
 }
 
@@ -426,6 +436,7 @@ func (h Handler) completeTask(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "task_complete_failed", err.Error())
 		return
 	}
+	h.audit(r, user.ID, "task.complete", groupID, input.UserID, input.TaskID)
 	writeOK(w, map[string]bool{"ok": true})
 }
 
@@ -459,6 +470,7 @@ func (h Handler) uncompleteTask(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "task_uncomplete_failed", err.Error())
 		return
 	}
+	h.audit(r, user.ID, "task.uncomplete", groupID, input.UserID, input.TaskID)
 	writeOK(w, map[string]bool{"ok": true})
 }
 
@@ -487,6 +499,16 @@ func (h Handler) requireOwner(w http.ResponseWriter, r *http.Request, groupID st
 		return false
 	}
 	return true
+}
+
+func (h Handler) audit(r *http.Request, actorUserID int64, action string, groupID string, targetUserID int64, taskID string) {
+	_ = h.deps.Store.AppendAuditLog(r.Context(), store.AuditLogInput{
+		ActorUserID:  actorUserID,
+		Action:       action,
+		GroupID:      groupID,
+		TargetUserID: targetUserID,
+		TaskID:       taskID,
+	})
 }
 
 func allowedImageExt(ext string) bool {
