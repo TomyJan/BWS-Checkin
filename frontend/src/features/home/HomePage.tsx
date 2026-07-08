@@ -18,9 +18,10 @@ import {
 } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
-import type { GroupsResponse, MeResponse } from "../../api/types";
+import type { Group, GroupsResponse, MeResponse } from "../../api/types";
+import { CreateGroupDialog, JoinGroupDialog } from "../groups/GroupDialogs";
 import { QRCodeUpload } from "../profile/QRCodeUpload";
 
 const dayLabel: Record<string, string> = {
@@ -31,10 +32,17 @@ const dayLabel: Record<string, string> = {
 
 export function HomePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(Boolean(searchParams.get("invite")));
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<MeResponse>("/me") });
   const groups = useQuery({ queryKey: ["groups"], queryFn: () => api<GroupsResponse>("/groups") });
   const groupItems = groups.data?.groups ?? [];
+
+  function goToGroup(group: Group) {
+    navigate(`/groups/${group.id}`);
+  }
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "background.default", py: { xs: 2, md: 4 } }}>
@@ -64,13 +72,23 @@ export function HomePage() {
           {!me.data?.user.qrImageUrl && <QRCodeUpload />}
 
           <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
-            <MenuItem onClick={() => setMenuAnchor(null)}>
+            <MenuItem
+              onClick={() => {
+                setMenuAnchor(null);
+                setCreateOpen(true);
+              }}
+            >
               <ListItemIcon>
                 <AddIcon fontSize="small" />
               </ListItemIcon>
               <ListItemText>创建互助组</ListItemText>
             </MenuItem>
-            <MenuItem onClick={() => setMenuAnchor(null)}>
+            <MenuItem
+              onClick={() => {
+                setMenuAnchor(null);
+                setJoinOpen(true);
+              }}
+            >
               <ListItemIcon>
                 <GroupsIcon fontSize="small" />
               </ListItemIcon>
@@ -107,6 +125,13 @@ export function HomePage() {
             )}
           </Stack>
         </Stack>
+        <CreateGroupDialog open={createOpen} onClose={() => setCreateOpen(false)} onDone={goToGroup} />
+        <JoinGroupDialog
+          open={joinOpen}
+          onClose={() => setJoinOpen(false)}
+          onDone={goToGroup}
+          defaultInvite={searchParams.get("invite") ?? ""}
+        />
       </Container>
     </Box>
   );
