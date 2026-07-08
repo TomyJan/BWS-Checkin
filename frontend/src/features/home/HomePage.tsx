@@ -37,7 +37,7 @@ export function HomePage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(Boolean(searchParams.get("invite")));
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<MeResponse>("/me") });
-  const groups = useQuery({ queryKey: ["groups"], queryFn: () => api<GroupsResponse>("/groups") });
+  const groups = useQuery({ queryKey: ["groups"], queryFn: () => api<GroupsResponse>("/group/list") });
   const groupItems = groups.data?.groups ?? [];
 
   function goToGroup(group: Group) {

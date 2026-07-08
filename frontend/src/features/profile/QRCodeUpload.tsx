@@ -9,7 +9,7 @@ export function QRCodeUpload() {
   async function upload(file: File) {
     const form = new FormData();
     form.append("file", file);
-    await api("/me/qr", { method: "POST", body: form });
+    await api("/me/qr/upload", { method: "POST", body: form });
     await queryClient.invalidateQueries({ queryKey: ["me"] });
   }
 

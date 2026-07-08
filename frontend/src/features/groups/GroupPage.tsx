@@ -6,6 +6,7 @@ import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import {
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogContent,
@@ -19,10 +20,18 @@ import {
   Typography
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
-import type { GroupResponse, MemberCompletion, TasksResponse, TaskStatus } from "../../api/types";
+import type { GroupResponse, MeResponse, MemberCompletion, TasksResponse, TaskStatus, User } from "../../api/types";
+import {
+  applyCompletionToTasks,
+  flushCompletionQueue,
+  queueCompletion,
+  trySyncCompletion,
+  type PendingCompletion
+} from "../../offline/completionSync";
+import { loadGroupSnapshot, saveGroupSnapshot } from "../../offline/groupSnapshot";
 
 export function GroupPage() {
   const { groupId = "" } = useParams();
@@ -32,11 +41,43 @@ export function GroupPage() {
   const [taskIndex, setTaskIndex] = useState(0);
   const [memberIndex, setMemberIndex] = useState(0);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [offlineSnapshot, setOfflineSnapshot] = useState(false);
+  const me = queryClient.getQueryData<MeResponse>(["me"]);
 
-  const group = useQuery({ queryKey: ["group", groupId], queryFn: () => api<GroupResponse>(`/groups/${groupId}`), enabled: Boolean(groupId) });
+  const group = useQuery({
+    queryKey: ["group", groupId],
+    queryFn: async () => {
+      try {
+        const response = await api<GroupResponse>(`/group/detail?groupId=${encodeURIComponent(groupId)}`);
+        setOfflineSnapshot(false);
+        return response;
+      } catch (error) {
+        const snapshot = loadGroupSnapshot(groupId);
+        if (snapshot) {
+          setOfflineSnapshot(true);
+          return { group: snapshot.group };
+        }
+        throw error;
+      }
+    },
+    enabled: Boolean(groupId)
+  });
   const tasksQuery = useQuery({
     queryKey: ["groupTasks", groupId],
-    queryFn: () => api<TasksResponse>(`/groups/${groupId}/tasks`),
+    queryFn: async () => {
+      try {
+        const response = await api<TasksResponse>(`/group/tasks?groupId=${encodeURIComponent(groupId)}`);
+        setOfflineSnapshot(false);
+        return response;
+      } catch (error) {
+        const snapshot = loadGroupSnapshot(groupId);
+        if (snapshot) {
+          setOfflineSnapshot(true);
+          return { tasks: snapshot.tasks };
+        }
+        throw error;
+      }
+    },
     enabled: Boolean(groupId)
   });
 
@@ -46,9 +87,32 @@ export function GroupPage() {
   const currentMember = members[Math.min(memberIndex, Math.max(members.length - 1, 0))];
 
   const complete = useMutation({
-    mutationFn: (entry: MemberCompletion) =>
-      api(`/groups/${groupId}/tasks/${currentTask.id}/members/${entry.member.id}/complete`, { method: "POST" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] })
+    mutationFn: async (action: Omit<PendingCompletion, "id">) => {
+      try {
+        await trySyncCompletion(action);
+        return { action, synced: true };
+      } catch {
+        queueCompletion(action);
+        return { action, synced: false };
+      }
+    },
+    onMutate: async (action) => {
+      await queryClient.cancelQueries({ queryKey: ["groupTasks", groupId] });
+      const previous = queryClient.getQueryData<TasksResponse>(["groupTasks", groupId]);
+      const checkedBy = currentUser(me?.user);
+      const nextTasks = applyCompletionToTasks(previous?.tasks ?? tasks, action, checkedBy);
+      queryClient.setQueryData<TasksResponse>(["groupTasks", groupId], { tasks: nextTasks });
+      if (group.data?.group) {
+        await saveGroupSnapshot({ group: group.data.group, tasks: nextTasks, savedAt: new Date().toISOString() });
+      }
+      return { previous };
+    },
+    onError: (_error, _action, context) => {
+      if (context?.previous) queryClient.setQueryData(["groupTasks", groupId], context.previous);
+    },
+    onSuccess: ({ synced }) => {
+      if (synced) void queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] });
+    }
   });
 
   const loading = group.isLoading || tasksQuery.isLoading;
@@ -64,6 +128,35 @@ export function GroupPage() {
     setMemberIndex(0);
     setTaskPickerOpen(false);
   }
+
+  function toggleCompletion(entry: MemberCompletion) {
+    if (!currentTask) return;
+    complete.mutate({
+      groupId,
+      taskId: currentTask.id,
+      userId: entry.member.id,
+      completed: !entry.completed,
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  useEffect(() => {
+    const groupValue = group.data?.group;
+    if (!groupValue || !tasksQuery.data?.tasks) return;
+    void saveGroupSnapshot({ group: groupValue, tasks: tasksQuery.data.tasks, savedAt: new Date().toISOString() });
+  }, [group.data?.group, tasksQuery.data?.tasks]);
+
+  useEffect(() => {
+    async function syncPending() {
+      const remaining = await flushCompletionQueue();
+      if (remaining === 0) {
+        await queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] });
+      }
+    }
+    if (navigator.onLine) void syncPending();
+    window.addEventListener("online", syncPending);
+    return () => window.removeEventListener("online", syncPending);
+  }, [groupId, queryClient]);
 
   const completedLabel = useMemo(() => {
     if (!currentMember?.completedAt) return "";
@@ -112,6 +205,7 @@ export function GroupPage() {
               </Typography>
             </Box>
           </Stack>
+          {offlineSnapshot && <Chip label="离线快照" color="warning" size="small" />}
         </Stack>
       </Box>
 
@@ -152,10 +246,10 @@ export function GroupPage() {
               fullWidth
               variant="contained"
               startIcon={<CheckIcon />}
-              disabled={!currentMember || currentMember.completed || complete.isPending}
-              onClick={() => currentMember && complete.mutate(currentMember)}
+              disabled={!currentMember || complete.isPending}
+              onClick={() => currentMember && toggleCompletion(currentMember)}
             >
-              {currentMember?.completed ? completedLabel : `标记 ${currentMember?.member.displayName ?? ""} 完成`}
+              {currentMember?.completed ? `撤销完成 · ${completedLabel}` : `标记 ${currentMember?.member.displayName ?? ""} 完成`}
             </Button>
           </Stack>
         </Box>
@@ -182,4 +276,8 @@ function formatTime(value: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function currentUser(user?: User): User {
+  return user ?? { id: 0, displayName: "本机", avatarUrl: "", qrImageUrl: "" };
 }

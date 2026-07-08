@@ -4,9 +4,25 @@ import type { PropsWithChildren } from "react";
 import { api } from "../../api/client";
 import type { MeResponse } from "../../api/types";
 
+const CACHED_ME_KEY = "bws:me";
+
 export function AuthGate({ children }: PropsWithChildren) {
   const queryClient = useQueryClient();
-  const me = useQuery({ queryKey: ["me"], queryFn: () => api<MeResponse>("/me"), retry: false });
+  const me = useQuery({
+    queryKey: ["me"],
+    queryFn: async () => {
+      try {
+        const response = await api<MeResponse>("/me");
+        localStorage.setItem(CACHED_ME_KEY, JSON.stringify(response));
+        return response;
+      } catch (error) {
+        const cached = cachedMe();
+        if (cached) return cached;
+        throw error;
+      }
+    },
+    retry: false
+  });
 
   async function login() {
     await fetch("/api/v1/dev/login?name=TomyJan", { method: "POST", credentials: "include" });
@@ -35,4 +51,14 @@ export function AuthGate({ children }: PropsWithChildren) {
   }
 
   return children;
+}
+
+function cachedMe(): MeResponse | null {
+  const raw = localStorage.getItem(CACHED_ME_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as MeResponse;
+  } catch {
+    return null;
+  }
 }

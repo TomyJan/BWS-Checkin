@@ -1,0 +1,17 @@
+{
+  "name": "BWS Checkin",
+  "short_name": "BWS",
+  "description": "BW 乐园互助打卡工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050708",
+  "theme_color": "#75d8c8",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

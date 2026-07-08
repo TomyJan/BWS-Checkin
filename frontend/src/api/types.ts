@@ -33,6 +33,7 @@ export interface MemberCompletion {
   member: Member;
   completed: boolean;
   completedAt: string | null;
+  updatedAt: string | null;
   checkedById: number | null;
   checkedByName: string;
 }

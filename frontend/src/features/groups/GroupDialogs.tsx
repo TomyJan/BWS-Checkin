@@ -38,7 +38,7 @@ export function CreateGroupDialog({ open, onClose, onDone }: DialogProps) {
 
   const createGroup = useMutation({
     mutationFn: () =>
-      api<{ group: Group }>("/groups", {
+      api<{ group: Group }>("/group/create", {
         method: "POST",
         body: JSON.stringify(values)
       }),
@@ -101,7 +101,11 @@ export function JoinGroupDialog({ open, onClose, onDone, defaultInvite = "" }: J
   }, [defaultInvite, open]);
 
   const joinGroup = useMutation({
-    mutationFn: () => api<{ group: Group }>(`/groups/${encodeURIComponent(groupId)}/join`, { method: "POST" }),
+    mutationFn: () =>
+      api<{ group: Group }>("/group/join", {
+        method: "POST",
+        body: JSON.stringify({ groupId })
+      }),
     onSuccess: async ({ group }) => {
       await queryClient.invalidateQueries({ queryKey: ["groups"] });
       onDone(group);

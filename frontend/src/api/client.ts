@@ -1,5 +1,14 @@
 const API_BASE = "/api/v1";
 
+interface ApiEnvelope<T> {
+  ok: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers =
     init.body instanceof FormData
@@ -16,5 +25,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new Error(`API ${response.status}`);
   }
 
-  return response.json() as Promise<T>;
+  const envelope = (await response.json()) as ApiEnvelope<T>;
+  if (!envelope.ok) {
+    throw new Error(envelope.error?.code ?? "business_error");
+  }
+  return envelope.data as T;
 }
