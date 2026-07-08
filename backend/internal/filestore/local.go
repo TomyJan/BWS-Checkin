@@ -1,0 +1,29 @@
+package filestore
+
+import (
+	"io"
+	"os"
+	"path/filepath"
+	"strconv"
+)
+
+type Local struct {
+	Dir string
+}
+
+func (l Local) SaveQR(userID int64, ext string, src io.Reader) (string, error) {
+	if err := os.MkdirAll(l.Dir, 0755); err != nil {
+		return "", err
+	}
+	name := strconv.FormatInt(userID, 10) + ext
+	path := filepath.Join(l.Dir, name)
+	dst, err := os.Create(path)
+	if err != nil {
+		return "", err
+	}
+	defer dst.Close()
+	if _, err := io.Copy(dst, src); err != nil {
+		return "", err
+	}
+	return "/uploads/" + name, nil
+}

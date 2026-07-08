@@ -3,8 +3,10 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"bws-checkin/backend/internal/store"
@@ -75,6 +77,47 @@ func TestGroupsAndTasksFlow(t *testing.T) {
 	}
 }
 
+func TestQRUploadRequiresLogin(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: t.TempDir()})
+
+	req := multipartRequest(t, "/api/v1/me/qr", "qr.png", []byte{0x89, 'P', 'N', 'G'})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestQRUploadUpdatesCurrentUser(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: t.TempDir()})
+	cookies := loginForTest(t, h, "TomyJan")
+
+	req := multipartRequest(t, "/api/v1/me/qr", "qr.png", []byte{0x89, 'P', 'N', 'G'})
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	me := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	for _, c := range cookies {
+		me.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, me)
+	if w.Code != http.StatusOK {
+		t.Fatalf("me status = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "/uploads/") {
+		t.Fatalf("expected qrImageUrl in response, got %s", w.Body.String())
+	}
+}
+
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
 	s, err := store.OpenMemory()
@@ -104,5 +147,24 @@ func jsonRequest(t *testing.T, method, path string, body any) *http.Request {
 	}
 	req := httptest.NewRequest(method, path, &buf)
 	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+func multipartRequest(t *testing.T, path string, filename string, content []byte) *http.Request {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, path, &buf)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req
 }

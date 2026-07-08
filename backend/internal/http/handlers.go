@@ -5,16 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"bws-checkin/backend/internal/domain"
+	"bws-checkin/backend/internal/filestore"
 	"bws-checkin/backend/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 
 type Deps struct {
-	Store   *store.Store
-	DevAuth bool
+	Store     *store.Store
+	DevAuth   bool
+	UploadDir string
 }
 
 type Handler struct {
@@ -60,6 +65,60 @@ func (h Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]domain.User{"user": user})
+}
+
+func (h Handler) uploadQR(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 5<<20)
+	if err := r.ParseMultipartForm(5 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid upload")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if !allowedImageExt(ext) {
+		writeError(w, http.StatusBadRequest, "unsupported image type")
+		return
+	}
+	url, err := filestore.Local{Dir: h.deps.UploadDir}.SaveQR(user.ID, ext, file)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := h.deps.Store.UpdateUserQR(r.Context(), user.ID, url); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	updated, err := h.deps.Store.UserByID(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]domain.User{"user": updated})
+}
+
+func (h Handler) deleteQR(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	if user.QRImageURL != "" && h.deps.UploadDir != "" {
+		_ = os.Remove(filepath.Join(h.deps.UploadDir, filepath.Base(user.QRImageURL)))
+	}
+	if err := h.deps.Store.UpdateUserQR(r.Context(), user.ID, ""); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 type createGroupRequest struct {
@@ -243,6 +302,15 @@ func (h Handler) currentUser(w http.ResponseWriter, r *http.Request) (domain.Use
 		return domain.User{}, false
 	}
 	return user, true
+}
+
+func allowedImageExt(ext string) bool {
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".webp":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeNotFoundOrForbidden(w http.ResponseWriter, err error) {

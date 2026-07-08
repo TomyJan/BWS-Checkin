@@ -14,5 +14,5 @@ func New(cfg config.Config) (http.Handler, func(), error) {
 		return nil, nil, err
 	}
 	cleanup := func() { _ = db.Close() }
-	return httpapi.NewRouter(httpapi.Deps{Store: db, DevAuth: cfg.DevAuth}), cleanup, nil
+	return httpapi.NewRouter(httpapi.Deps{Store: db, DevAuth: cfg.DevAuth, UploadDir: cfg.UploadDir}), cleanup, nil
 }
