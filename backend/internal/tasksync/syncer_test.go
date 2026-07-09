@@ -92,6 +92,26 @@ func TestSyncFailureKeepsExistingTasks(t *testing.T) {
 	}
 }
 
+func TestSyncEmptyTaskListReturnsError(t *testing.T) {
+	st := newTestStore(t)
+	syncer := tasksync.New(st, &fakeSource{tasks: []tasksync.Task{}}, tasksync.Config{Now: fixedNow})
+
+	if err := syncer.Sync(t.Context()); err == nil {
+		t.Fatal("sync err = nil, want empty task list error")
+	}
+
+	status, err := st.TaskSyncState(t.Context())
+	if err != nil {
+		t.Fatalf("sync state: %v", err)
+	}
+	if status.LastErrorAt == nil || status.LastErrorCode != "empty_task_list" {
+		t.Fatalf("error state = %+v, want empty_task_list", status)
+	}
+	if status.LastSuccessAt != nil {
+		t.Fatalf("last success = %v, want nil", status.LastSuccessAt)
+	}
+}
+
 func TestEnsureFreshTriggersAsyncRefresh(t *testing.T) {
 	st := newTestStore(t)
 	now := fixedNow()

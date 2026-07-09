@@ -671,6 +671,10 @@ func (h Handler) syncGroupTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.deps.TaskSync.SyncWithAccount(r.Context(), account); err != nil {
+		if errors.Is(err, tasksync.ErrEmptyTaskList) {
+			writeBusinessError(w, "empty_task_list", "")
+			return
+		}
 		writeBusinessError(w, "task_sync_failed", err.Error())
 		return
 	}
@@ -704,6 +708,10 @@ func (h Handler) syncTasks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.deps.TaskSync.Sync(r.Context()); err != nil {
+		if errors.Is(err, tasksync.ErrEmptyTaskList) {
+			writeBusinessError(w, "empty_task_list", "")
+			return
+		}
 		writeBusinessError(w, "task_sync_failed", err.Error())
 		return
 	}
@@ -1010,6 +1018,7 @@ func businessErrorMessage(code string, fallback string) string {
 	messages := map[string]string{
 		"current_user_load_failed":          "当前用户加载失败，请重新登录",
 		"creator_bilibili_account_required": "创建者需要先在个人中心完成 B 站扫码登录",
+		"empty_task_list":                   "未同步到任何乐园任务，请检查 B 站登录状态或稍后重试",
 		"file_required":                     "请选择二维码图片",
 		"group_access_denied":               "互助组不存在或你无权访问",
 		"group_archived":                    "互助组已归档，不能继续操作",

@@ -443,6 +443,24 @@ func TestTaskSyncAPI(t *testing.T) {
 	}
 }
 
+func TestTaskSyncAPIReturnsBusinessErrorForEmptyTaskList(t *testing.T) {
+	s := newTestStore(t)
+	syncer := tasksync.New(s, &httpTaskSource{tasks: []tasksync.Task{}}, tasksync.Config{})
+	h := NewRouter(Deps{Store: s, DevAuth: true, TaskSync: syncer})
+	cookies := loginForTest(t, h, "TomyJan")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/task/sync", nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("sync status = %d, body = %s", w.Code, w.Body.String())
+	}
+	assertBusinessError(t, w, "empty_task_list")
+}
+
 func TestTaskImageProxyRequiresLoginAndUsesTaskImageURL(t *testing.T) {
 	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Referer") == "" {

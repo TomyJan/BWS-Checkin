@@ -2,12 +2,15 @@ package tasksync
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	"bws-checkin/backend/internal/domain"
 	"bws-checkin/backend/internal/store"
 )
+
+var ErrEmptyTaskList = errors.New("empty task list")
 
 type Task struct {
 	ExternalID  string
@@ -111,7 +114,7 @@ func (s *Syncer) saveTasks(ctx context.Context, tasks []Task, err error) error {
 	}
 	if len(inputs) == 0 {
 		_ = s.store.RecordTaskSyncError(ctx, "empty_task_list", s.now())
-		return nil
+		return ErrEmptyTaskList
 	}
 	if err := s.store.ReplaceBilibiliTasks(ctx, inputs); err != nil {
 		_ = s.store.RecordTaskSyncError(ctx, "store_write_failed", s.now())
