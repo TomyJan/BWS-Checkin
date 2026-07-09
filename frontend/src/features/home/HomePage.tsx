@@ -1,7 +1,3 @@
-import AddIcon from "@mui/icons-material/Add";
-import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import DeleteIcon from "@mui/icons-material/Delete";
-import GroupsIcon from "@mui/icons-material/Groups";
 import {
   Box,
   Card,
@@ -25,6 +21,7 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Group, GroupsResponse, MeResponse } from "../../api/types";
+import { AddIcon, CloudUploadIcon, DeleteIcon, GroupsIcon } from "../../icons";
 import { CreateGroupDialog, JoinGroupDialog } from "../groups/GroupDialogs";
 import { QRCodeUpload } from "../profile/QRCodeUpload";
 

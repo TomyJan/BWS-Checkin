@@ -1,15 +1,3 @@
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import ArchiveIcon from "@mui/icons-material/Archive";
-import CheckIcon from "@mui/icons-material/Check";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import EditIcon from "@mui/icons-material/Edit";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import LockIcon from "@mui/icons-material/Lock";
-import LockOpenIcon from "@mui/icons-material/LockOpen";
-import MoreVertIcon from "@mui/icons-material/MoreVert";
-import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
-import NavigateNextIcon from "@mui/icons-material/NavigateNext";
-import PersonRemoveIcon from "@mui/icons-material/PersonRemove";
 import {
   Box,
   Button,
@@ -44,6 +32,20 @@ import {
   type PendingCompletion
 } from "../../offline/completionSync";
 import { loadGroupSnapshot, saveGroupSnapshot } from "../../offline/groupSnapshot";
+import {
+  ArchiveIcon,
+  ArrowBackIcon,
+  CheckIcon,
+  ContentCopyIcon,
+  EditIcon,
+  ExpandMoreIcon,
+  LockIcon,
+  LockOpenIcon,
+  MoreVertIcon,
+  NavigateBeforeIcon,
+  NavigateNextIcon,
+  PersonRemoveIcon
+} from "../../icons";
 import { EditGroupDialog } from "./GroupDialogs";
 
 export function GroupPage() {

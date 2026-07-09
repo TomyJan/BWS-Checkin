@@ -1,7 +1,7 @@
-import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { Alert, Button, Stack } from "@mui/material";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
+import { CloudUploadIcon } from "../../icons";
 
 export function QRCodeUpload() {
   const queryClient = useQueryClient();
