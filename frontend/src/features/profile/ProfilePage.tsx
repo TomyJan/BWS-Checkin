@@ -26,13 +26,7 @@ import { CloudUploadIcon, DeleteIcon, SyncIcon } from "../../icons";
 import { UserLayout } from "../../layouts/UserLayout";
 import { qrCodeDataURL } from "../../utils/qrCode";
 
-const sourceLabel = {
-  uploaded: "上传图片",
-  bilibili_generated: "B 站生成"
-} as const;
-
 const panelRadius = "16px";
-const qrSurfaceRadius = "18px";
 const controlSurfaceRadius = "14px";
 
 function loginStatusText(status?: BilibiliLoginPollResponse["status"]) {
@@ -201,7 +195,6 @@ export function ProfilePage() {
           </Box>
           <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}>
             <Chip color={isBound ? "success" : "default"} label={isBound ? "B 站已登录" : "B 站未登录"} />
-            <Chip color={hasCurrentQR ? "primary" : "warning"} label={hasCurrentQR ? `${sourceLabel[currentSource]}可用` : "缺少二维码"} />
           </Stack>
         </Stack>
 
@@ -380,56 +373,34 @@ export function ProfilePage() {
               gap: 2.5
             }}
           >
-            <Stack direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { sm: "center" }, justifyContent: "space-between", gap: 1.5 }}>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 900 }}>
-                  当前互助二维码
-                </Typography>
-                <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-                  {sourceLabel[currentSource]}
-                </Typography>
-              </Box>
-              <Chip size="small" color={hasCurrentQR ? "primary" : "warning"} label={hasCurrentQR ? "可用于互助组" : "不可用"} />
-            </Stack>
+            <Typography variant="h6" sx={{ fontWeight: 900 }}>
+              当前互助二维码
+            </Typography>
 
-            <Box
-              data-testid="current-qr-surface"
-              sx={{
-                display: "grid",
-                placeItems: "center",
-                flex: 1,
-                minHeight: { xs: 380, md: 560 },
-                border: 1,
-                borderColor: "divider",
-                borderRadius: qrSurfaceRadius,
-                bgcolor: "background.default",
-                overflow: "hidden",
-                p: { xs: 2, sm: 3 }
-              }}
-            >
-              {qrSrc ? (
-                <Box
-                  component="img"
-                  src={qrSrc}
-                  alt="我的二维码"
-                  sx={{
-                    width: "min(100%, 620px)",
-                    maxHeight: { xs: 440, md: 620 },
-                    objectFit: "contain",
-                    borderRadius: "12px"
-                  }}
-                />
-              ) : (
-                <Stack sx={{ alignItems: "center", gap: 1, color: "text.secondary", textAlign: "center", px: 2 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 850, color: "text.primary" }}>
-                    暂无可用二维码
-                  </Typography>
-                  <Typography sx={{ maxWidth: 360 }}>
-                    先完成 B 站扫码登录，或上传一张 BWS 二维码图片。
-                  </Typography>
-                </Stack>
-              )}
-            </Box>
+            {qrSrc ? (
+              <Box
+                component="img"
+                src={qrSrc}
+                alt="我的二维码"
+                sx={{
+                  width: "min(100%, 620px)",
+                  maxHeight: { xs: 440, md: 620 },
+                  objectFit: "contain",
+                  borderRadius: "12px",
+                  alignSelf: "center",
+                  m: "auto"
+                }}
+              />
+            ) : (
+              <Stack sx={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 1, color: "text.secondary", textAlign: "center", px: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 850, color: "text.primary" }}>
+                  暂无可用二维码
+                </Typography>
+                <Typography sx={{ maxWidth: 360 }}>
+                  先完成 B 站扫码登录，或上传一张 BWS 二维码图片。
+                </Typography>
+              </Stack>
+            )}
           </Box>
         </Box>
       </Stack>

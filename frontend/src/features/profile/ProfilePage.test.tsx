@@ -108,14 +108,15 @@ describe("ProfilePage", () => {
     const currentQRPreview = screen.getByTestId("current-qr-preview");
     expect(currentQRPreview).toBeInTheDocument();
     expect(getComputedStyle(currentQRPreview).borderRadius).toBe("16px");
-    const currentQRSurface = screen.getByTestId("current-qr-surface");
-    expect(currentQRSurface).toBeInTheDocument();
-    expect(getComputedStyle(currentQRSurface).borderRadius).toBe("18px");
+    expect(screen.queryByTestId("current-qr-surface")).not.toBeInTheDocument();
     expect(screen.queryByTestId("current-qr-device")).not.toBeInTheDocument();
     expect(screen.queryByText(/a4fc8cfb-7dc8-485e-a270-76d18a44cdc7/)).not.toBeInTheDocument();
     const currentQRImage = await screen.findByRole("img", { name: "我的二维码" });
     expect(currentQRImage).toBeInTheDocument();
     expect(getComputedStyle(currentQRImage).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    expect(screen.queryByText("上传图片可用")).not.toBeInTheDocument();
+    expect(screen.queryByText("B 站生成可用")).not.toBeInTheDocument();
+    expect(screen.queryByText("可用于互助组")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "更新上传二维码" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "替换当前图片" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "B 站扫码登录" })).not.toBeInTheDocument();
@@ -133,7 +134,8 @@ describe("ProfilePage", () => {
     renderProfilePage();
 
     expect(await screen.findByRole("heading", { name: "当前互助二维码" })).toBeInTheDocument();
-    expect(screen.getByText("缺少二维码")).toBeInTheDocument();
+    expect(screen.queryByText("缺少二维码")).not.toBeInTheDocument();
+    expect(screen.queryByText("不可用")).not.toBeInTheDocument();
     expect(screen.getByText("暂无可用二维码")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "我的二维码" })).not.toBeInTheDocument();
   });
