@@ -31,20 +31,19 @@ const sourceLabel = {
   bilibili_generated: "B 站生成"
 } as const;
 
-function loginStatusLabel(status?: BilibiliLoginPollResponse["status"]) {
+function loginStatusText(status?: BilibiliLoginPollResponse["status"]) {
   switch (status) {
-    case "pending_scan":
-      return "等待扫码";
     case "pending_confirm":
-      return "等待确认";
+      return "等待 B 站客户端确认";
     case "expired":
-      return "二维码已过期";
+      return "登录二维码已过期";
     case "confirmed":
-      return "登录成功";
+      return "B 站扫码登录完成";
     case "failed":
-      return "登录失败";
+      return "B 站扫码登录失败";
+    case "pending_scan":
     default:
-      return "等待扫码";
+      return "等待 B 站客户端扫码";
   }
 }
 
@@ -116,7 +115,7 @@ export function ProfilePage() {
 
   const unbindAccount = useMutation({
     mutationFn: unbindBilibiliAccount,
-    onError: (err) => setError(err instanceof Error ? err.message : "解绑 B 站账号失败"),
+    onError: (err) => setError(err instanceof Error ? err.message : "退出 B 站登录失败"),
     onSuccess: async () => {
       setError("");
       setLoginQR(null);
@@ -136,7 +135,7 @@ export function ProfilePage() {
   const hasCurrentQR = currentSource === "bilibili_generated" ? isBound : hasUploadedQR;
   const qrSrc = hasCurrentQR ? qrImageURL(user) : "";
   const loginQRImage = loginQR?.imageDataUrl ?? "";
-  const loginQRUnavailable = Boolean(loginQR && !loginQRImage);
+  const loginQRMissingImage = Boolean(loginQR && !loginQRImage);
   const isPollingLogin = Boolean(loginQR && loginStatus !== "confirmed" && loginStatus !== "expired" && loginStatus !== "failed");
 
   useEffect(() => {
@@ -155,162 +154,135 @@ export function ProfilePage() {
               个人中心
             </Typography>
             <Typography color="text.secondary" sx={{ mt: 0.5, maxWidth: 620 }}>
-              管理互助打卡使用的二维码来源。
+              选择互助组中展示的二维码来源。
             </Typography>
           </Box>
           <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}>
             <Chip color={isBound ? "success" : "default"} label={isBound ? "B 站已登录" : "B 站未登录"} />
-            <Chip color={hasCurrentQR ? "primary" : "warning"} label={hasCurrentQR ? "二维码可用" : "缺少二维码"} />
+            <Chip color={hasCurrentQR ? "primary" : "warning"} label={hasCurrentQR ? `${sourceLabel[currentSource]}可用` : "缺少二维码"} />
           </Stack>
         </Stack>
 
         {error && <Alert severity="error">{error}</Alert>}
 
-        <Paper
-          variant="outlined"
-          sx={{
-            overflow: "hidden",
-            borderRadius: 4,
-            bgcolor: "background.paper"
-          }}
-        >
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", lg: "390px minmax(0, 1fr)" },
-              minHeight: { lg: 680 }
-            }}
-          >
+        <Paper variant="outlined" sx={{ overflow: "hidden", borderRadius: 4, bgcolor: "background.paper" }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "380px minmax(0, 1fr)" }, minHeight: { lg: 650 } }}>
             <Stack
-              spacing={3}
+              spacing={2.5}
               sx={{
                 p: { xs: 2, sm: 3 },
                 borderRight: { lg: 1 },
                 borderBottom: { xs: 1, lg: 0 },
                 borderColor: "divider",
-                bgcolor: "action.hover"
+                bgcolor: "background.default"
               }}
             >
-              <Stack spacing={1.5}>
-                <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1.5 }}>
+              <Paper variant="outlined" sx={{ borderRadius: 3, p: 2.25, bgcolor: "background.paper" }}>
+                <Stack spacing={2}>
                   <Box>
                     <Typography variant="h6" component="h2" sx={{ fontWeight: 900 }}>
                       B 站扫码登录
                     </Typography>
-                    <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-                      登录后可由系统生成 BWS 二维码。
+                    <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
+                      扫码后可使用 B 站账号生成 BWS 二维码。
                     </Typography>
                   </Box>
-                  <Chip size="small" color={isBound ? "success" : "default"} label={isBound ? "已登录" : "未登录"} />
-                </Stack>
 
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: "56px minmax(0, 1fr)",
-                    gap: 1.5,
-                    alignItems: "center",
-                    border: 1,
-                    borderColor: "divider",
-                    borderRadius: 3,
-                    p: 1.5,
-                    bgcolor: "background.paper"
-                  }}
-                >
-                  <Avatar src={account?.faceUrl} sx={{ width: 56, height: 56 }}>
-                    {(account?.uname ?? user?.displayName)?.[0]}
-                  </Avatar>
-                  <Box sx={{ minWidth: 0 }}>
-                    <Typography sx={{ fontWeight: 850 }} noWrap>
-                      {isBound ? account?.uname : "等待 B 站登录"}
-                    </Typography>
-                    <Typography color="text.secondary" sx={{ fontSize: 13 }} noWrap>
-                      {isBound ? "账号已可用于生成二维码" : "使用 B 站客户端扫码确认"}
-                    </Typography>
-                  </Box>
-                </Box>
-              </Stack>
-
-              <Box
-                sx={{
-                  display: "grid",
-                  placeItems: "center",
-                  minHeight: 280,
-                  border: 1,
-                  borderColor: loginQRUnavailable ? "warning.main" : "divider",
-                  borderRadius: 4,
-                  bgcolor: "background.paper",
-                  p: 2
-                }}
-              >
-                {loginQRImage ? (
-                  <Stack spacing={1.5} sx={{ alignItems: "center", width: "100%" }}>
+                  {isBound && (
                     <Box
-                      component="img"
-                      src={loginQRImage}
-                      alt="B 站登录二维码"
                       sx={{
-                        width: 220,
-                        height: 220,
-                        maxWidth: "100%",
+                        display: "grid",
+                        gridTemplateColumns: "48px minmax(0, 1fr)",
+                        gap: 1.5,
+                        alignItems: "center",
+                        border: 1,
+                        borderColor: "divider",
                         borderRadius: 3,
-                        objectFit: "contain",
-                        bgcolor: "#fff",
-                        p: 1
+                        p: 1.5,
+                        bgcolor: "action.hover"
                       }}
-                    />
-                    <Typography sx={{ fontWeight: 850 }}>{loginStatusLabel(loginStatus)}</Typography>
-                    {isPollingLogin && <LinearProgress sx={{ width: "100%", borderRadius: 999 }} />}
+                    >
+                      <Avatar src={account?.faceUrl} sx={{ width: 48, height: 48 }}>
+                        {account?.uname?.[0] ?? user?.displayName?.[0]}
+                      </Avatar>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 850 }} noWrap>
+                          {account?.uname}
+                        </Typography>
+                        <Typography color="text.secondary" sx={{ fontSize: 13 }} noWrap>
+                          B 站账号已登录
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
+
+                  <Box
+                    sx={{
+                      display: "grid",
+                      placeItems: "center",
+                      minHeight: 252,
+                      border: 1,
+                      borderColor: loginQRMissingImage ? "error.main" : "divider",
+                      borderRadius: 3,
+                      bgcolor: "background.paper",
+                      p: 2
+                    }}
+                  >
+                    {loginQRImage ? (
+                      <Box
+                        component="img"
+                        src={loginQRImage}
+                        alt="B 站登录二维码"
+                        sx={{ width: 220, height: 220, maxWidth: "100%", borderRadius: 2, objectFit: "contain", bgcolor: "#fff", p: 1 }}
+                      />
+                    ) : (
+                      <Stack spacing={0.75} sx={{ alignItems: "center", textAlign: "center", color: "text.secondary" }}>
+                        <Typography sx={{ fontWeight: 850, color: "text.primary" }}>
+                          {loginQRMissingImage ? "接口未返回二维码图片" : "尚未生成登录二维码"}
+                        </Typography>
+                        <Typography sx={{ fontSize: 14 }}>
+                          {loginQRMissingImage ? "请确认后端已重启到最新版本，或重新生成。" : "生成后会自动轮询扫码状态。"}
+                        </Typography>
+                      </Stack>
+                    )}
+                  </Box>
+
+                  {loginQRImage && (
+                    <Stack spacing={1}>
+                      <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
+                        <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: "primary.main", flex: "0 0 auto" }} />
+                        <Typography color="text.secondary" sx={{ fontSize: 14, fontWeight: 700 }}>
+                          {loginStatusText(loginStatus)}
+                        </Typography>
+                      </Stack>
+                      {isPollingLogin && <LinearProgress sx={{ borderRadius: 999 }} />}
+                    </Stack>
+                  )}
+
+                  {loginQRMissingImage && (
+                    <Alert severity="error" variant="outlined" sx={{ borderRadius: 3 }}>
+                      不是扫码失败，当前页面没有拿到可渲染的二维码图片数据。
+                    </Alert>
+                  )}
+
+                  <Stack spacing={1}>
+                    <Button variant="contained" startIcon={<SyncIcon />} disabled={createLoginQR.isPending} onClick={() => createLoginQR.mutate()}>
+                      {loginQR || isBound ? "重新生成登录二维码" : "生成登录二维码"}
+                    </Button>
+                    {isBound && (
+                      <Button color="error" variant="text" disabled={unbindAccount.isPending} onClick={() => unbindAccount.mutate()}>
+                        退出 B 站登录
+                      </Button>
+                    )}
                   </Stack>
-                ) : (
-                  <Stack spacing={1} sx={{ alignItems: "center", textAlign: "center", color: "text.secondary" }}>
-                    <Typography sx={{ fontWeight: 850, color: "text.primary" }}>
-                      {loginQRUnavailable ? "登录二维码暂不可用" : "尚未生成登录二维码"}
-                    </Typography>
-                    <Typography sx={{ fontSize: 14 }}>
-                      {loginQRUnavailable ? "请重新生成二维码。" : "生成后会自动轮询扫码状态。"}
-                    </Typography>
-                  </Stack>
-                )}
-              </Box>
+                </Stack>
+              </Paper>
 
-              <Stack spacing={1.25}>
-                <Button
-                  variant="contained"
-                  startIcon={<SyncIcon />}
-                  disabled={createLoginQR.isPending}
-                  onClick={() => createLoginQR.mutate()}
-                >
-                  {loginQR || isBound ? "重新生成登录二维码" : "生成登录二维码"}
-                </Button>
-                {isBound && (
-                  <Button color="error" variant="text" disabled={unbindAccount.isPending} onClick={() => unbindAccount.mutate()}>
-                    退出 B 站登录
-                  </Button>
-                )}
-              </Stack>
-
-              <Divider />
-
-              <Stack spacing={1.5}>
-                <Box>
-                  <Typography sx={{ fontWeight: 850 }}>二维码来源</Typography>
-                  <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-                    当前使用：{sourceLabel[currentSource]}
-                  </Typography>
-                </Box>
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 1,
-                    p: 0.5,
-                    border: 1,
-                    borderColor: "divider",
-                    borderRadius: 999,
-                    bgcolor: "background.paper"
-                  }}
-                >
+              <Box>
+                <Typography color="text.secondary" sx={{ fontSize: 13, fontWeight: 900, mb: 1 }}>
+                  二维码来源
+                </Typography>
+                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.75, p: 0.5, border: 1, borderColor: "divider", borderRadius: 999, bgcolor: "background.paper" }}>
                   <Button
                     variant={currentSource === "uploaded" ? "contained" : "text"}
                     disabled={changeQRSource.isPending}
@@ -328,7 +300,34 @@ export function ProfilePage() {
                     B 站生成
                   </Button>
                 </Box>
-              </Stack>
+              </Box>
+
+              <Paper variant="outlined" sx={{ borderRadius: 3, p: 2, bgcolor: "background.paper" }}>
+                <Stack spacing={1.5}>
+                  <Box>
+                    <Typography sx={{ fontWeight: 900 }}>上传二维码</Typography>
+                    <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
+                      不登录 B 站时可继续使用上传图片。
+                    </Typography>
+                  </Box>
+                  <Button component="label" variant="outlined" startIcon={<CloudUploadIcon />} disabled={uploadQR.isPending}>
+                    {hasUploadedQR ? "更新上传二维码" : "上传 BWS 二维码"}
+                    <input
+                      hidden
+                      accept="image/png,image/jpeg,image/webp"
+                      type="file"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.currentTarget.value = "";
+                        if (file) uploadQR.mutate(file);
+                      }}
+                    />
+                  </Button>
+                  <Button color="error" variant="text" startIcon={<DeleteIcon />} disabled={!hasUploadedQR || deleteQR.isPending} onClick={() => deleteQR.mutate()}>
+                    删除上传图
+                  </Button>
+                </Stack>
+              </Paper>
             </Stack>
 
             <Stack spacing={2.5} sx={{ p: { xs: 2, sm: 3 } }}>
@@ -341,7 +340,7 @@ export function ProfilePage() {
                     {sourceLabel[currentSource]}
                   </Typography>
                 </Box>
-                <Chip size="small" color={hasCurrentQR ? "success" : "warning"} label={hasCurrentQR ? "可用于互助组" : "不可用"} />
+                <Chip size="small" color={hasCurrentQR ? "primary" : "warning"} label={hasCurrentQR ? "可用于互助组" : "不可用"} />
               </Stack>
 
               <Box
@@ -352,7 +351,7 @@ export function ProfilePage() {
                   border: 1,
                   borderColor: "divider",
                   borderRadius: 4,
-                  bgcolor: "action.hover",
+                  bgcolor: "background.default",
                   overflow: "hidden",
                   p: { xs: 1.5, sm: 2 }
                 }}
@@ -362,14 +361,7 @@ export function ProfilePage() {
                     component="img"
                     src={qrSrc}
                     alt="我的二维码"
-                    sx={{
-                      width: "100%",
-                      height: "100%",
-                      maxHeight: 560,
-                      objectFit: "contain",
-                      borderRadius: 3,
-                      bgcolor: "background.paper"
-                    }}
+                    sx={{ width: "100%", height: "100%", maxHeight: 560, objectFit: "contain", borderRadius: 3, bgcolor: "background.paper" }}
                   />
                 ) : (
                   <Stack sx={{ alignItems: "center", gap: 1, color: "text.secondary", textAlign: "center", px: 2 }}>
@@ -382,25 +374,6 @@ export function ProfilePage() {
                   </Stack>
                 )}
               </Box>
-
-              <Stack direction={{ xs: "column", sm: "row" }} sx={{ gap: 1, justifyContent: "flex-end" }}>
-                <Button component="label" variant="outlined" startIcon={<CloudUploadIcon />} disabled={uploadQR.isPending}>
-                  {hasUploadedQR ? "更新上传二维码" : "上传 BWS 二维码"}
-                  <input
-                    hidden
-                    accept="image/png,image/jpeg,image/webp"
-                    type="file"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.currentTarget.value = "";
-                      if (file) uploadQR.mutate(file);
-                    }}
-                  />
-                </Button>
-                <Button color="error" variant="text" startIcon={<DeleteIcon />} disabled={!hasUploadedQR || deleteQR.isPending} onClick={() => deleteQR.mutate()}>
-                  删除上传图
-                </Button>
-              </Stack>
             </Stack>
           </Box>
         </Paper>

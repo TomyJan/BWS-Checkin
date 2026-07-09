@@ -96,6 +96,9 @@ describe("ProfilePage", () => {
     expect(screen.queryByText(/a4fc8cfb-7dc8-485e-a270-76d18a44cdc7/)).not.toBeInTheDocument();
     expect(await screen.findByRole("img", { name: "我的二维码" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "更新上传二维码" })).toBeInTheDocument();
+    expect(screen.getByText("尚未生成登录二维码")).toBeInTheDocument();
+    expect(screen.queryByText("BiliTomy")).not.toBeInTheDocument();
+    expect(screen.queryByText("账号已可用于生成二维码")).not.toBeInTheDocument();
   });
 
   test("supports Bilibili QR login polling and QR source switching", async () => {
@@ -104,11 +107,13 @@ describe("ProfilePage", () => {
     expect(await screen.findByRole("heading", { name: "B 站扫码登录" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "生成登录二维码" }));
     expect(await screen.findByRole("img", { name: "B 站登录二维码" })).toHaveAttribute("src", "data:image/png;base64,loginqr");
+    expect(screen.getByText("等待 B 站客户端扫码")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "等待扫码" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "检查登录状态" })).not.toBeInTheDocument();
     expect(await screen.findByText("BiliTomy")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "B 站生成" }));
-    await waitFor(() => expect(screen.getByText("当前使用：B 站生成")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("B 站生成").length).toBeGreaterThan(0));
     expect(screen.getByRole("img", { name: "我的二维码" })).toHaveAttribute("src", "/api/v1/user/qr?userId=a4fc8cfb-7dc8-485e-a270-76d18a44cdc7");
   });
 
@@ -118,7 +123,8 @@ describe("ProfilePage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "生成登录二维码" }));
 
-    await waitFor(() => expect(screen.getByText("登录二维码暂不可用")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("接口未返回二维码图片")).toBeInTheDocument());
+    expect(screen.getByText("不是扫码失败，当前页面没有拿到可渲染的二维码图片数据。")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "B 站登录二维码" })).not.toBeInTheDocument();
   });
 });
