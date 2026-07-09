@@ -1,11 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { HomePage } from "./HomePage";
+import { ProfilePage } from "./ProfilePage";
 
-function renderHomePage() {
+function renderProfilePage() {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -14,14 +14,14 @@ function renderHomePage() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <HomePage />
+      <MemoryRouter initialEntries={["/profile"]}>
+        <ProfilePage />
       </MemoryRouter>
     </QueryClientProvider>
   );
 }
 
-describe("HomePage", () => {
+describe("ProfilePage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(window, "fetch").mockImplementation((input) => {
@@ -34,9 +34,6 @@ describe("HomePage", () => {
           })
         );
       }
-      if (url.includes("/api/v1/group/list")) {
-        return Promise.resolve(Response.json({ ok: true, data: { groups: [] } }));
-      }
       return Promise.resolve(Response.json({ ok: true, data: {} }));
     });
   });
@@ -45,18 +42,15 @@ describe("HomePage", () => {
     vi.restoreAllMocks();
   });
 
-  test("uses the shared user navigation and keeps group actions in the page body", async () => {
-    renderHomePage();
+  test("uses the shared user navigation and presents QR management as the main task", async () => {
+    renderProfilePage();
 
     await waitFor(() => expect(screen.getByText("BWS 互助")).toBeInTheDocument());
     expect(screen.getByRole("link", { name: "互助组" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "个人中心" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: /TomyJan/ })).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: "创建或加入互助组" }));
-    expect(screen.getByRole("menuitem", { name: "创建互助组" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "加入互助组" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "更新二维码" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "删除二维码" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "个人中心" })).toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: "我的二维码" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "更新二维码" })).toBeInTheDocument();
   });
 });

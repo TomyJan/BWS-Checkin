@@ -1,13 +1,12 @@
-import { Alert, Avatar, Box, Button, Card, CardContent, Container, Stack, Typography } from "@mui/material";
+import { Alert, Avatar, Box, Button, Card, CardContent, Chip, Stack, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import type { MeResponse } from "../../api/types";
-import { ArrowBackIcon, CloudUploadIcon, DeleteIcon } from "../../icons";
+import { CloudUploadIcon, DeleteIcon } from "../../icons";
+import { UserLayout } from "../../layouts/UserLayout";
 
 export function ProfilePage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
   const me = useQuery({ queryKey: ["me"], queryFn: () => api<MeResponse>("/me") });
@@ -35,84 +34,119 @@ export function ProfilePage() {
   });
 
   const user = me.data?.user;
+  const hasQR = Boolean(user?.qrImageUrl);
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "background.default", py: { xs: 2, md: 4 } }}>
-      <Container maxWidth="sm">
-        <Stack spacing={2.5}>
-          <Button startIcon={<ArrowBackIcon />} onClick={() => navigate("/")} sx={{ alignSelf: "flex-start" }}>
-            返回
-          </Button>
-          <Stack direction="row" sx={{ alignItems: "center", gap: 1.5 }}>
-            <Avatar src={user?.avatarUrl} sx={{ width: 56, height: 56 }}>
-              {user?.displayName?.[0]}
-            </Avatar>
-            <Box>
-              <Typography variant="h5" sx={{ fontWeight: 850 }}>
-                {user?.displayName ?? "个人资料"}
-              </Typography>
-              <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-                管理你的二维码
-              </Typography>
-            </Box>
-          </Stack>
+    <UserLayout maxWidth="lg">
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 900 }}>
+            个人中心
+          </Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+            维护你的账户信息和互助打卡二维码。
+          </Typography>
+        </Box>
 
-          {error && <Alert severity="error">{error}</Alert>}
+        {error && <Alert severity="error">{error}</Alert>}
+
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", md: "320px minmax(0, 1fr)" },
+            gap: 2
+          }}
+        >
+          <Card variant="outlined" sx={{ alignSelf: "start" }}>
+            <CardContent>
+              <Stack spacing={2.5}>
+                <Stack direction="row" sx={{ alignItems: "center", gap: 1.5 }}>
+                  <Avatar src={user?.avatarUrl} sx={{ width: 64, height: 64, fontSize: 28 }}>
+                    {user?.displayName?.[0]}
+                  </Avatar>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 850 }} noWrap>
+                      {user?.displayName ?? "我"}
+                    </Typography>
+                    <Typography color="text.secondary" sx={{ fontSize: 13 }} noWrap>
+                      {user?.id ? `ID: ${user.id}` : "正在加载账户信息"}
+                    </Typography>
+                  </Box>
+                </Stack>
+                <Box sx={{ display: "grid", gap: 1 }}>
+                  <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                    <Typography color="text.secondary">二维码状态</Typography>
+                    <Chip size="small" color={hasQR ? "success" : "warning"} label={hasQR ? "已上传" : "未上传"} />
+                  </Stack>
+                  <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                    <Typography color="text.secondary">可被互助打卡</Typography>
+                    <Chip size="small" color={hasQR ? "primary" : "default"} label={hasQR ? "可用" : "不可用"} />
+                  </Stack>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
 
           <Card variant="outlined">
             <CardContent>
-              <Stack spacing={2}>
+              <Stack spacing={2.5}>
+                <Stack direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { sm: "center" }, justifyContent: "space-between", gap: 1.5 }}>
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 850 }}>
+                      我的二维码
+                    </Typography>
+                    <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                      互助组成员会通过这个二维码帮你完成点位打卡。
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" sx={{ gap: 1 }}>
+                    <Button component="label" variant="contained" startIcon={<CloudUploadIcon />} disabled={uploadQR.isPending}>
+                      {hasQR ? "更新二维码" : "上传二维码"}
+                      <input
+                        hidden
+                        accept="image/png,image/jpeg,image/webp"
+                        type="file"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.currentTarget.value = "";
+                          if (file) uploadQR.mutate(file);
+                        }}
+                      />
+                    </Button>
+                    <Button color="error" variant="outlined" startIcon={<DeleteIcon />} disabled={!hasQR || deleteQR.isPending} onClick={() => deleteQR.mutate()}>
+                      删除
+                    </Button>
+                  </Stack>
+                </Stack>
+
                 <Box
                   sx={{
                     display: "grid",
                     placeItems: "center",
-                    minHeight: 320,
-                    borderRadius: 4,
-                    bgcolor: "action.hover",
+                    minHeight: { xs: 360, md: 520 },
+                    border: 1,
+                    borderColor: "divider",
+                    borderRadius: 3,
+                    bgcolor: "background.paper",
                     overflow: "hidden"
                   }}
                 >
-                  {user?.qrImageUrl ? (
-                    <Box
-                      component="img"
-                      src={user.qrImageUrl}
-                      alt="我的二维码"
-                      sx={{ width: "100%", maxHeight: 420, objectFit: "contain" }}
-                    />
+                  {hasQR ? (
+                    <Box component="img" src={user?.qrImageUrl} alt="我的二维码" sx={{ width: "100%", height: "100%", maxHeight: 560, objectFit: "contain" }} />
                   ) : (
-                    <Typography color="text.secondary">尚未上传二维码</Typography>
+                    <Stack sx={{ alignItems: "center", gap: 1.5, color: "text.secondary", textAlign: "center", px: 2 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                        尚未上传二维码
+                      </Typography>
+                      <Typography>上传后，互助组详情页会自动显示你的二维码。</Typography>
+                    </Stack>
                   )}
                 </Box>
-                <Stack direction={{ xs: "column", sm: "row" }} sx={{ gap: 1 }}>
-                  <Button component="label" fullWidth variant="contained" startIcon={<CloudUploadIcon />} disabled={uploadQR.isPending}>
-                    {user?.qrImageUrl ? "更新二维码" : "上传二维码"}
-                    <input
-                      hidden
-                      accept="image/png,image/jpeg,image/webp"
-                      type="file"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.currentTarget.value = "";
-                        if (file) uploadQR.mutate(file);
-                      }}
-                    />
-                  </Button>
-                  <Button
-                    fullWidth
-                    color="error"
-                    variant="outlined"
-                    startIcon={<DeleteIcon />}
-                    disabled={!user?.qrImageUrl || deleteQR.isPending}
-                    onClick={() => deleteQR.mutate()}
-                  >
-                    删除二维码
-                  </Button>
-                </Stack>
               </Stack>
             </CardContent>
           </Card>
-        </Stack>
-      </Container>
-    </Box>
+        </Box>
+      </Stack>
+    </UserLayout>
   );
 }
