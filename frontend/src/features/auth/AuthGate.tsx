@@ -16,8 +16,11 @@ export function AuthGate({ children }: PropsWithChildren) {
         localStorage.setItem(CACHED_ME_KEY, JSON.stringify(response));
         return response;
       } catch (error) {
-        const cached = cachedMe();
-        if (cached) return cached;
+        if (!navigator.onLine) {
+          const cached = cachedMe();
+          if (cached) return cached;
+        }
+        localStorage.removeItem(CACHED_ME_KEY);
         throw error;
       }
     },

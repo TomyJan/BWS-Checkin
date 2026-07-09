@@ -9,6 +9,16 @@ interface ApiEnvelope<T> {
   };
 }
 
+export class ApiError extends Error {
+  code: string;
+
+  constructor(code: string, message: string) {
+    super(message || code);
+    this.name = "ApiError";
+    this.code = code;
+  }
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers =
     init.body instanceof FormData
@@ -27,7 +37,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   const envelope = (await response.json()) as ApiEnvelope<T>;
   if (!envelope.ok) {
-    throw new Error(envelope.error?.code ?? "business_error");
+    throw new ApiError(envelope.error?.code ?? "business_error", envelope.error?.message ?? "");
   }
   return envelope.data as T;
 }

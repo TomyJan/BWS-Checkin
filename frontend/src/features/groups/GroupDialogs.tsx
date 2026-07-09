@@ -4,6 +4,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Alert,
   Stack,
   TextField,
   ToggleButton,
@@ -54,6 +55,7 @@ export function CreateGroupDialog({ open, onClose, onDone }: DialogProps) {
       <DialogTitle>创建互助组</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
+          {createGroup.error instanceof Error && <Alert severity="error">{createGroup.error.message}</Alert>}
           <TextField label="名称" value={values.name} onChange={(event) => setValues({ ...values, name: event.target.value })} />
           <TextField label="ID / 邀请码" value={values.id} onChange={(event) => setValues({ ...values, id: event.target.value })} />
           <ToggleButtonGroup
@@ -137,6 +139,7 @@ export function EditGroupDialog({ open, onClose, onDone, group }: EditGroupDialo
       <DialogTitle>编辑互助组</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
+          {updateGroup.error instanceof Error && <Alert severity="error">{updateGroup.error.message}</Alert>}
           <TextField label="名称" value={values.name} onChange={(event) => setValues({ ...values, name: event.target.value })} />
           <TextField label="ID / 邀请码" value={values.id} disabled />
           <ToggleButtonGroup
@@ -200,6 +203,11 @@ export function JoinGroupDialog({ open, onClose, onDone, defaultInvite = "" }: J
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle>加入互助组</DialogTitle>
       <DialogContent>
+        {joinGroup.error instanceof Error && (
+          <Alert severity="error" sx={{ mt: 1, mb: 2 }}>
+            {joinGroup.error.message}
+          </Alert>
+        )}
         <TextField
           autoFocus
           fullWidth
