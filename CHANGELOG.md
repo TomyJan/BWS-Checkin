@@ -1,5 +1,34 @@
 # 更新日志
 
+## v0.2.0 - 2026-07-10
+
+真实数据与生产登录版本。
+
+### 功能
+
+- 支持 B 站扫码绑定账号，后端加密保存 Cookie，并可生成 BWS 互助二维码。
+- 支持从 BWS 接口同步乐园任务，内置 7 月 10 日、11 日、12 日三天默认点位数据。
+- 支持 Live 打卡状态刷新，区分手动状态和官方接口状态。
+- 支持多 OAuth provider 登录和账号绑定，当前可配置 QQ OAuth 与 OIDC provider。
+- 后端路由统一收敛到 `/api/v1/*`，健康检查改为 `/api/v1/healthz`。
+- 个人中心、二维码来源切换、扫码登录工作台和点位选择弹窗完成上线前体验整理。
+- 新增 `deploy/production.env.example`，提供 QQ OAuth 与 Casdoor OIDC 的线上配置模板。
+
+### 发布验证
+
+- `backend`: `go test ./...` 通过。
+- `backend`: `go vet ./...` 通过。
+- `backend`: `gofmt -l .` 无输出。
+- `backend`: `go build -trimpath -ldflags="-s -w"` 可生成 Windows x64 二进制。
+- `frontend`: `pnpm test` 通过，9 个测试文件、22 个测试。
+- `frontend`: `pnpm build` 通过；存在 Vite 大 chunk 警告，不阻塞发布。
+- `root`: `git diff --check` 通过。
+
+### 已知限制
+
+- 发布工作流仍需要推送 `v0.2.0` tag 后由 GitHub Actions 生成正式 Release 产物。
+- B 站 Cookie 密钥仍是单密钥模型，轮换会影响已绑定账号的后续接口请求。
+
 ## v0.1.0 - 2026-07-09
 
 首个 MVP 发布版本。
