@@ -6,6 +6,8 @@ import (
 	"strconv"
 )
 
+const developmentBilibiliCookieSecret = "local-development-bilibili-cookie-secret"
+
 type Config struct {
 	Addr                 string
 	DBPath               string
@@ -27,11 +29,17 @@ type Config struct {
 }
 
 func Load() Config {
+	devAuth := env("BWS_DEV_AUTH", "1") == "1"
+	bilibiliCookieSecret := env("BWS_BILIBILI_COOKIE_SECRET", "")
+	if devAuth && bilibiliCookieSecret == "" {
+		bilibiliCookieSecret = developmentBilibiliCookieSecret
+	}
+
 	return Config{
 		Addr:                 env("BWS_ADDR", ":8080"),
 		DBPath:               env("BWS_DB", "data/bws.db"),
 		UploadDir:            env("BWS_UPLOAD_DIR", "data/uploads"),
-		DevAuth:              env("BWS_DEV_AUTH", "1") == "1",
+		DevAuth:              devAuth,
 		PublicBase:           env("BWS_PUBLIC_BASE", "http://localhost:5173"),
 		OIDCIssuerURL:        env("BWS_OIDC_ISSUER", ""),
 		OIDCClientID:         env("BWS_OIDC_CLIENT_ID", ""),
@@ -42,7 +50,7 @@ func Load() Config {
 		CookieSameSite:       env("BWS_COOKIE_SAMESITE", "lax"),
 		SessionMaxAge:        intEnv("BWS_SESSION_MAX_AGE", 60*60*24*30),
 		BilibiliLoginEnabled: env("BWS_BILIBILI_LOGIN_ENABLED", "1") == "1",
-		BilibiliCookieSecret: env("BWS_BILIBILI_COOKIE_SECRET", ""),
+		BilibiliCookieSecret: bilibiliCookieSecret,
 		BilibiliPassportBase: env("BWS_BILIBILI_PASSPORT_BASE", ""),
 		BilibiliAPIBase:      env("BWS_BILIBILI_API_BASE", ""),
 	}
