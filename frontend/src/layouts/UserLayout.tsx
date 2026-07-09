@@ -4,8 +4,6 @@ import {
   Box,
   Button,
   Container,
-  Divider,
-  ListItemText,
   Menu,
   MenuItem,
   Stack,
@@ -95,16 +93,7 @@ export function UserLayout({ children, maxWidth = "md" }: UserLayoutProps) {
 
       <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }}>
         <MenuItem disabled>
-          <ListItemText primary={user?.displayName ?? "我"} secondary={user?.id ? `ID: ${user.id.slice(0, 8)}` : undefined} />
-        </MenuItem>
-        <Divider />
-        <MenuItem
-          onClick={() => {
-            setAnchor(null);
-            navigate("/profile");
-          }}
-        >
-          个人中心
+          {user?.displayName ?? "我"}
         </MenuItem>
         <MenuItem onClick={() => void logout()}>退出登录</MenuItem>
       </Menu>

@@ -2,6 +2,7 @@ import { Alert, Avatar, Box, Button, Card, CardContent, Chip, Stack, Typography 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api/client";
+import { qrImageURL } from "../../api/qr";
 import type { MeResponse } from "../../api/types";
 import { CloudUploadIcon, DeleteIcon } from "../../icons";
 import { UserLayout } from "../../layouts/UserLayout";
@@ -35,6 +36,7 @@ export function ProfilePage() {
 
   const user = me.data?.user;
   const hasQR = Boolean(user?.qrImageUrl);
+  const qrSrc = qrImageURL(user);
 
   return (
     <UserLayout maxWidth="lg">
@@ -69,7 +71,7 @@ export function ProfilePage() {
                       {user?.displayName ?? "我"}
                     </Typography>
                     <Typography color="text.secondary" sx={{ fontSize: 13 }} noWrap>
-                      {user?.id ? `ID: ${user.id}` : "正在加载账户信息"}
+                      {user ? "当前登录账户" : "正在加载账户信息"}
                     </Typography>
                   </Box>
                 </Stack>
@@ -132,7 +134,7 @@ export function ProfilePage() {
                   }}
                 >
                   {hasQR ? (
-                    <Box component="img" src={user?.qrImageUrl} alt="我的二维码" sx={{ width: "100%", height: "100%", maxHeight: 560, objectFit: "contain" }} />
+                    <Box component="img" src={qrSrc} alt="我的二维码" sx={{ width: "100%", height: "100%", maxHeight: 560, objectFit: "contain" }} />
                   ) : (
                     <Stack sx={{ alignItems: "center", gap: 1.5, color: "text.secondary", textAlign: "center", px: 2 }}>
                       <Typography variant="h6" sx={{ fontWeight: 800 }}>

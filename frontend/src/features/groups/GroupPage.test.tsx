@@ -69,7 +69,7 @@ describe("GroupPage", () => {
                   totalCount: 1,
                   members: [
                     {
-                      member: { id: "u1", displayName: "Alice", qrImageUrl: "/api/v1/user/qr?userId=u1" },
+                      member: { id: "u1", displayName: "Alice", qrImageUrl: "/uploads/u1.png" },
                       completed: false,
                       completedAt: null,
                       updatedAt: null,
@@ -96,6 +96,7 @@ describe("GroupPage", () => {
 
     await waitFor(() => expect(screen.getByText("BW2026 周五")).toBeInTheDocument());
     expect(screen.queryByText(/正在查看/)).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Alice 的二维码" })).toHaveAttribute("src", "/api/v1/user/qr?userId=u1");
 
     fireEvent.click(screen.getByRole("button", { name: /彩虹补给站/ }));
     expect(screen.getByText("选择点位")).toBeInTheDocument();

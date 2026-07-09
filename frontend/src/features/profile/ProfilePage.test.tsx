@@ -30,7 +30,14 @@ describe("ProfilePage", () => {
         return Promise.resolve(
           Response.json({
             ok: true,
-            data: { user: { id: "u1", displayName: "TomyJan", avatarUrl: "", qrImageUrl: "/api/v1/user/qr?userId=u1" } }
+            data: {
+              user: {
+                id: "a4fc8cfb-7dc8-485e-a270-76d18a44cdc7",
+                displayName: "TomyJan",
+                avatarUrl: "",
+                qrImageUrl: "/api/v1/user/qr?userId=a4fc8cfb-7dc8-485e-a270-76d18a44cdc7"
+              }
+            }
           })
         );
       }
@@ -50,6 +57,7 @@ describe("ProfilePage", () => {
     expect(screen.getByRole("link", { name: "个人中心" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: /TomyJan/ })).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "个人中心" })).toBeInTheDocument();
+    expect(screen.queryByText(/a4fc8cfb-7dc8-485e-a270-76d18a44cdc7/)).not.toBeInTheDocument();
     expect(await screen.findByRole("img", { name: "我的二维码" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "更新二维码" })).toBeInTheDocument();
   });

@@ -1,3 +1,4 @@
+import { qrImageURL } from "../api/qr";
 import type { Group, TaskStatus } from "../api/types";
 
 export interface GroupSnapshot {
@@ -29,7 +30,8 @@ export async function preloadQRCodeImages(tasks: TaskStatus[]) {
   const urls = new Set<string>();
   for (const task of tasks) {
     for (const entry of task.members ?? []) {
-      if (entry.member.qrImageUrl) urls.add(entry.member.qrImageUrl);
+      const url = qrImageURL(entry.member);
+      if (url) urls.add(url);
     }
   }
   const cache = await caches.open(QR_CACHE);

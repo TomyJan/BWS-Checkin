@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { HomePage } from "./HomePage";
@@ -42,17 +42,29 @@ describe("HomePage", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
   });
 
-  test("uses the shared user navigation and keeps group actions in the page body", async () => {
+  test("uses the shared user navigation and keeps profile menu focused on account actions", async () => {
     renderHomePage();
 
     await waitFor(() => expect(screen.getByText("BWS 互助")).toBeInTheDocument());
     expect(screen.getByRole("link", { name: "互助组" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "个人中心" })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: /TomyJan/ })).toBeInTheDocument());
+    const userMenuButton = await screen.findByRole("button", { name: /TomyJan/ });
 
+    fireEvent.click(userMenuButton);
+    expect(screen.getByRole("menuitem", { name: "TomyJan" })).toBeInTheDocument();
+    expect(screen.queryByText(/ID:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "个人中心" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "退出登录" })).toBeInTheDocument();
+  });
+
+  test("keeps group actions in the page body", async () => {
+    renderHomePage();
+
+    await waitFor(() => expect(screen.getByText("BWS 互助")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "创建或加入互助组" }));
     expect(screen.getByRole("menuitem", { name: "创建互助组" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "加入互助组" })).toBeInTheDocument();

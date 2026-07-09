@@ -22,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
+import { qrImageURL } from "../../api/qr";
 import type { GroupResponse, MeResponse, MemberCompletion, TasksResponse, TaskStatus, User } from "../../api/types";
 import {
   applyCompletionToTasks,
@@ -107,6 +108,7 @@ export function GroupPage() {
   const currentTask = tasks[Math.min(taskIndex, Math.max(tasks.length - 1, 0))];
   const members = currentTask?.members ?? [];
   const currentMember = members[Math.min(memberIndex, Math.max(members.length - 1, 0))];
+  const currentMemberQR = qrImageURL(currentMember?.member);
   const currentGroup = group.data?.group;
   const isOwner = currentGroup?.role === "owner";
   const isArchived = Boolean(currentGroup?.archivedAt);
@@ -349,8 +351,8 @@ export function GroupPage() {
           setUiVisible((visible) => !visible);
         }}
       >
-        {currentMember?.member.qrImageUrl ? (
-          <img className="qr-photo-img" src={currentMember.member.qrImageUrl} alt={`${currentMember.member.displayName} 的二维码`} />
+        {currentMemberQR ? (
+          <img className="qr-photo-img" src={currentMemberQR} alt={`${currentMember.member.displayName} 的二维码`} />
         ) : (
           <Box className="qr-missing">
             <Typography variant="h5" sx={{ fontWeight: 800 }}>
