@@ -531,7 +531,10 @@ export function GroupPage() {
         onClose={() => setTaskPickerOpen(false)}
         fullWidth
         maxWidth="sm"
-        slotProps={{ paper: { className: "task-picker-paper" } }}
+        slotProps={{
+          container: { className: "task-picker-container" },
+          paper: { className: "task-picker-paper" }
+        }}
       >
         <DialogTitle className="task-picker-title">
           <Typography component="span" variant="h6" className="task-picker-heading">
@@ -553,8 +556,9 @@ export function GroupPage() {
                 minHeight: 36,
                 "& .MuiTab-root": {
                   minHeight: 36,
+                  minWidth: 0,
                   mr: 1,
-                  px: 0.75,
+                  px: 0.5,
                   borderRadius: "999px",
                   bgcolor: "action.hover",
                   color: "text.secondary",

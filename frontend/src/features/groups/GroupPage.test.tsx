@@ -233,12 +233,20 @@ describe("GroupPage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "刷新状态" })).toBeDisabled());
   });
 
-  test("keeps task picker cards and group tabs compact with fixed item height", () => {
+  test("keeps task picker compact without stretching sparse task cards", () => {
     const css = readFileSync(resolve(testDir, "../../styles.css"), "utf8");
 
+    expect(css).toMatch(/\.task-sheet\s*\{[\s\S]*max-width:\s*960px;/);
+    expect(css).toMatch(/\.task-picker-container\s*\{[\s\S]*align-items:\s*flex-end !important;/);
+    expect(css).toMatch(/\.task-picker-paper\s*\{[\s\S]*height:\s*min\(620px, calc\(100vh - 48px\)\) !important;/);
+    expect(css).toMatch(/\.task-picker-list\s*\{[\s\S]*display:\s*flex !important;/);
+    expect(css).toMatch(/\.task-picker-list\s*\{[\s\S]*flex-direction:\s*column;/);
+    expect(css).toMatch(/\.task-picker-list\s*\{[\s\S]*justify-content:\s*flex-start;/);
     expect(css).toMatch(/\.task-picker-card\s*\{[\s\S]*height:\s*126px;/);
+    expect(css).toMatch(/\.task-picker-card\s*\{[\s\S]*flex:\s*0 0 126px;/);
     expect(css).toMatch(/\.task-picker-card\s*\{[\s\S]*overflow:\s*hidden;/);
     expect(css).toMatch(/\.task-picker-list\s*\{[\s\S]*overflow-y:\s*auto;/);
-    expect(css).toMatch(/\.task-picker-tabs-wrap \.MuiTab-root\s*\{[\s\S]*padding:\s*0 6px !important;/);
+    expect(css).toMatch(/\.task-picker-tabs-wrap \.MuiTabs-scroller\s*\{[\s\S]*overflow-x:\s*auto !important;/);
+    expect(css).toMatch(/\.task-picker-tabs-wrap \.MuiTab-root\s*\{[\s\S]*padding:\s*0 4px !important;/);
   });
 });

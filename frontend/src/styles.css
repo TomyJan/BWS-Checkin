@@ -169,7 +169,7 @@ body {
   width: 100%;
   display: grid;
   gap: 10px;
-  max-width: 760px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 14px;
   border: 1px solid rgb(255 255 255 / 0.16);
@@ -278,10 +278,14 @@ body {
   font-weight: 950;
 }
 
+.task-picker-container {
+  align-items: flex-end !important;
+}
+
 .task-picker-paper {
   width: 560px !important;
   max-width: calc(100% - 64px) !important;
-  height: min(720px, calc(100vh - 48px)) !important;
+  height: min(620px, calc(100vh - 48px)) !important;
   max-height: calc(100vh - 48px) !important;
   display: flex !important;
   flex-direction: column !important;
@@ -331,10 +335,24 @@ body {
   display: none;
 }
 
+.task-picker-tabs-wrap .MuiTabs-scroller {
+  overflow-x: auto !important;
+  scrollbar-width: none;
+}
+
+.task-picker-tabs-wrap .MuiTabs-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.task-picker-tabs-wrap .MuiTabs-flexContainer {
+  width: max-content;
+}
+
 .task-picker-tabs-wrap .MuiTab-root {
   min-height: 36px !important;
+  min-width: 0 !important;
   margin-right: 8px !important;
-  padding: 0 6px !important;
+  padding: 0 4px !important;
   border-radius: 999px !important;
   color: var(--bws-task-muted) !important;
   background: var(--bws-task-chip-bg) !important;
@@ -354,7 +372,9 @@ body {
 }
 
 .task-picker-list {
-  display: grid !important;
+  display: flex !important;
+  flex-direction: column;
+  justify-content: flex-start;
   min-height: 0;
   flex: 1 1 auto;
   gap: 10px;
@@ -365,6 +385,7 @@ body {
 .task-picker-card {
   min-width: 0;
   height: 126px;
+  flex: 0 0 126px;
   display: grid !important;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: flex-start !important;
@@ -513,12 +534,12 @@ body {
   }
 
   .task-sheet {
-    max-width: calc(100% - 48px);
+    max-width: calc(100% - 24px);
   }
 
   .task-picker-paper {
     max-width: calc(100% - 24px) !important;
-    height: min(680px, calc(100vh - 24px)) !important;
+    height: min(560px, calc(100vh - 24px)) !important;
     max-height: calc(100vh - 24px) !important;
     margin: 12px auto !important;
   }
