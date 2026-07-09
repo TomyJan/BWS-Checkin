@@ -7,6 +7,9 @@ import { ProfilePage } from "./ProfilePage";
 
 let loginQRCodeImageDataUrl: string | undefined;
 let bilibiliPollRequests = 0;
+let meQRCodeUrl: string;
+let meQRSource: "uploaded" | "bilibili_generated";
+let initialBilibiliBound: boolean;
 
 function renderProfilePage() {
   const client = new QueryClient({
@@ -29,7 +32,10 @@ describe("ProfilePage", () => {
     vi.restoreAllMocks();
     loginQRCodeImageDataUrl = "data:image/png;base64,loginqr";
     bilibiliPollRequests = 0;
-    let bilibiliBound = false;
+    meQRCodeUrl = "/api/v1/user/qr?userId=a4fc8cfb-7dc8-485e-a270-76d18a44cdc7";
+    meQRSource = "uploaded";
+    initialBilibiliBound = false;
+    let bilibiliBound = initialBilibiliBound;
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url.endsWith("/api/v1/me")) {
@@ -41,8 +47,8 @@ describe("ProfilePage", () => {
                 id: "a4fc8cfb-7dc8-485e-a270-76d18a44cdc7",
                 displayName: "TomyJan",
                 avatarUrl: "",
-                qrImageUrl: "/api/v1/user/qr?userId=a4fc8cfb-7dc8-485e-a270-76d18a44cdc7",
-                qrSource: bilibiliBound ? "bilibili_generated" : "uploaded"
+                qrImageUrl: meQRCodeUrl,
+                qrSource: meQRSource
               }
             }
           })
@@ -97,13 +103,25 @@ describe("ProfilePage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /TomyJan/ })).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "个人中心" })).toBeInTheDocument();
     expect(screen.getByTestId("profile-workbench")).toBeInTheDocument();
-    expect(screen.getByTestId("current-qr-device")).toBeInTheDocument();
+    expect(screen.getByTestId("current-qr-preview")).toBeInTheDocument();
+    expect(screen.queryByTestId("current-qr-device")).not.toBeInTheDocument();
     expect(screen.queryByText(/a4fc8cfb-7dc8-485e-a270-76d18a44cdc7/)).not.toBeInTheDocument();
     expect(await screen.findByRole("img", { name: "我的二维码" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "更新上传二维码" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "替换当前图片" })).not.toBeInTheDocument();
     expect(screen.getByText("尚未生成登录二维码")).toBeInTheDocument();
     expect(screen.queryByText("BiliTomy")).not.toBeInTheDocument();
     expect(screen.queryByText("账号已可用于生成二维码")).not.toBeInTheDocument();
+  });
+
+  test("does not claim the current QR is available when the selected source has no image URL", async () => {
+    meQRCodeUrl = "";
+    renderProfilePage();
+
+    expect(await screen.findByRole("heading", { name: "当前互助二维码" })).toBeInTheDocument();
+    expect(screen.getByText("缺少二维码")).toBeInTheDocument();
+    expect(screen.getByText("暂无可用二维码")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "我的二维码" })).not.toBeInTheDocument();
   });
 
   test("supports Bilibili QR login polling and QR source switching", async () => {
