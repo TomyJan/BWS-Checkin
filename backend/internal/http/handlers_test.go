@@ -438,6 +438,77 @@ func TestTaskSyncAPI(t *testing.T) {
 	}
 }
 
+func TestGroupTaskSyncRequiresOwnerBilibiliAccount(t *testing.T) {
+	s := newTestStore(t)
+	syncer := tasksync.New(s, &httpTaskSource{tasks: []tasksync.Task{{
+		ExternalID: "4101", GroupName: "1.1馆", Name: "创建者任务", Title: "创建者任务",
+		VenueID: "2", VenueName: "1.1馆", EventDay: "20260711", SortOrder: 10,
+	}}}, tasksync.Config{})
+	h := NewRouter(Deps{Store: s, DevAuth: true, TaskSync: syncer})
+	ownerCookies := loginForTest(t, h, "Owner")
+
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/create", map[string]any{
+		"id": "bw2026-day2", "name": "BW2026 7 月 11 日", "day": "20260711",
+	})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/task/sync", map[string]any{"groupId": "bw2026-day2"})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("sync status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"code":"creator_bilibili_account_required"`) {
+		t.Fatalf("expected creator account error, got %s", w.Body.String())
+	}
+}
+
+func TestGroupTaskSyncUsesOwnerBilibiliAccount(t *testing.T) {
+	s := newTestStore(t)
+	source := &httpAccountTaskSource{tasks: []tasksync.Task{{
+		ExternalID: "4201", GroupName: "1.1馆", Name: "创建者任务", Title: "创建者任务",
+		VenueID: "2", VenueName: "1.1馆", EventDay: "20260711", SortOrder: 10,
+	}}}
+	syncer := tasksync.New(s, source, tasksync.Config{})
+	h := NewRouter(Deps{Store: s, DevAuth: true, TaskSync: syncer})
+	ownerCookies := loginForTest(t, h, "Owner")
+	ownerID := userIDForCookies(t, h, ownerCookies)
+	if err := s.SaveBilibiliAccount(t.Context(), domain.BilibiliAccount{
+		UserID: ownerID, MID: "123456", Uname: "OwnerBili", CookieCiphertext: "ciphertext",
+	}); err != nil {
+		t.Fatalf("save owner bilibili account: %v", err)
+	}
+
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/create", map[string]any{
+		"id": "bw2026-day2", "name": "BW2026 7 月 11 日", "day": "20260711",
+	})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/task/sync", map[string]any{"groupId": "bw2026-day2"})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	if source.accountUserID != ownerID {
+		t.Fatalf("account user id = %q, want owner %q", source.accountUserID, ownerID)
+	}
+}
+
 func TestManualTaskActionsRejectLiveCompletion(t *testing.T) {
 	s := newTestStore(t)
 	h := NewRouter(Deps{Store: s, DevAuth: true})
@@ -1242,6 +1313,20 @@ func (s *httpTaskSource) FetchTasks(ctx context.Context) ([]tasksync.Task, error
 	if s.err != nil {
 		return nil, s.err
 	}
+	return append([]tasksync.Task(nil), s.tasks...), nil
+}
+
+type httpAccountTaskSource struct {
+	tasks         []tasksync.Task
+	accountUserID string
+}
+
+func (s *httpAccountTaskSource) FetchTasks(ctx context.Context) ([]tasksync.Task, error) {
+	return append([]tasksync.Task(nil), s.tasks...), nil
+}
+
+func (s *httpAccountTaskSource) FetchTasksForAccount(ctx context.Context, account domain.BilibiliAccount) ([]tasksync.Task, error) {
+	s.accountUserID = account.UserID
 	return append([]tasksync.Task(nil), s.tasks...), nil
 }
 

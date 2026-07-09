@@ -103,6 +103,29 @@ func TestGroupTasksIncludeDisplayMetadata(t *testing.T) {
 	}
 }
 
+func TestGroupTasksFilterByEventDate(t *testing.T) {
+	s := newTestStore(t)
+	owner := mustCreateUser(t, s, "oidc-owner", "Owner")
+	if err := s.CreateGroup(t.Context(), CreateGroupInput{
+		ID: "bw2026-day2", Name: "BW2026 7 月 11 日", Day: "20260711", OwnerUserID: owner.ID,
+	}); err != nil {
+		t.Fatalf("create group with event date: %v", err)
+	}
+
+	tasks, err := s.GroupTasks(t.Context(), "bw2026-day2")
+	if err != nil {
+		t.Fatalf("group tasks: %v", err)
+	}
+	if len(tasks) == 0 {
+		t.Fatal("tasks length = 0, want day tasks")
+	}
+	for _, task := range tasks {
+		if task.EventDay != "20260711" {
+			t.Fatalf("task %s event day = %q, want 20260711", task.ID, task.EventDay)
+		}
+	}
+}
+
 func TestSyncTaskCompletionKeepsNewestState(t *testing.T) {
 	s := newTestStore(t)
 	owner := mustCreateUser(t, s, "oidc-owner", "Owner")

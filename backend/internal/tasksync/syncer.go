@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"bws-checkin/backend/internal/domain"
 	"bws-checkin/backend/internal/store"
 )
 
@@ -24,6 +25,10 @@ type Task struct {
 
 type Source interface {
 	FetchTasks(ctx context.Context) ([]Task, error)
+}
+
+type AccountSource interface {
+	FetchTasksForAccount(ctx context.Context, account domain.BilibiliAccount) ([]Task, error)
 }
 
 type Config struct {
@@ -58,6 +63,19 @@ func New(st *store.Store, source Source, config Config) *Syncer {
 
 func (s *Syncer) Sync(ctx context.Context) error {
 	tasks, err := s.source.FetchTasks(ctx)
+	return s.saveTasks(ctx, tasks, err)
+}
+
+func (s *Syncer) SyncWithAccount(ctx context.Context, account domain.BilibiliAccount) error {
+	source, ok := s.source.(AccountSource)
+	if !ok {
+		return s.Sync(ctx)
+	}
+	tasks, err := source.FetchTasksForAccount(ctx, account)
+	return s.saveTasks(ctx, tasks, err)
+}
+
+func (s *Syncer) saveTasks(ctx context.Context, tasks []Task, err error) error {
 	if err != nil {
 		_ = s.store.RecordTaskSyncError(ctx, errorCode(err), s.now())
 		return err

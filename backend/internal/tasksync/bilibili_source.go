@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"bws-checkin/backend/internal/bilibili"
+	"bws-checkin/backend/internal/domain"
 	"bws-checkin/backend/internal/store"
 )
 
@@ -79,6 +80,10 @@ func (s *BilibiliSource) FetchTasks(ctx context.Context) ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
+	return s.FetchTasksForAccount(ctx, account)
+}
+
+func (s *BilibiliSource) FetchTasksForAccount(ctx context.Context, account domain.BilibiliAccount) ([]Task, error) {
 	cookies, err := bilibili.DecryptCookieJar(s.cookieSecret, account.CookieCiphertext)
 	if err != nil {
 		return nil, err

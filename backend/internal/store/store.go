@@ -153,6 +153,18 @@ func (s *Store) migrate() error {
 	if err := s.ensureColumn("tasks", "external_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := s.ensureColumn("tasks", "group_name", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("tasks", "title", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("tasks", "reward_coins", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("tasks", "description", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	if err := s.ensureColumn("tasks", "image_url", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
@@ -233,6 +245,9 @@ func (s *Store) migrate() error {
 	`); err != nil {
 		return err
 	}
+	if err := s.seedDefaultTasks(); err != nil {
+		return err
+	}
 	_, err = s.db.Exec(`
 		UPDATE task_completions
 		SET
@@ -244,6 +259,43 @@ func (s *Store) migrate() error {
 				ELSE 'manual_incomplete'
 			END,
 			source = CASE WHEN status IN ('live_incomplete', 'live_completed') THEN 'live' ELSE source END
+	`)
+	return err
+}
+
+func (s *Store) seedDefaultTasks() error {
+	_, err := s.db.Exec(`
+		INSERT INTO tasks (
+			id, external_id, group_name, name, title, reward_coins, description,
+			image_url, venue_id, venue_name, event_day, sync_source, sort_order, enabled
+		)
+		VALUES
+			('rainbow-station', '', '8.1馆', '彩虹补给站', '完成彩虹补给站互动', 3, '在彩虹补给站完成互动并出示二维码。', '', '1', '8.1馆', '20260710', 'default', 10, 1),
+			('stage-support', '', '8.1馆', '舞台应援任务', '完成主舞台应援', 5, '在主舞台完成应援任务并领取奖励。', '', '1', '8.1馆', '20260710', 'default', 20, 1),
+			('stamp-rally', '', '1.1馆', '乐园集章点', '完成乐园集章点打卡', 2, '到达集章点完成盖章或扫码确认。', '', '2', '1.1馆', '20260710', 'default', 30, 1),
+			('photo-spot', '', '3馆', '主题合影点', '完成主题合影点互动', 2, '在主题合影点完成互动拍照后出示二维码。', '', '4', '3馆', '20260710', 'default', 40, 1),
+			('default-20260711-supply', '', '1.1馆', '乐园补给站', '领取乐园补给奖励', 3, '在 1.1 馆补给点完成互动并出示二维码。', '', '2', '1.1馆', '20260711', 'default', 110, 1),
+			('default-20260711-virtual', '', '虚拟乐园', '虚拟乐园应援', '完成虚拟乐园互动', 5, '在虚拟乐园完成指定互动并领取乐园币。', '', '6', '6.1馆', '20260711', 'default', 120, 1),
+			('default-20260711-market', '', '梦幻集市', '梦幻集市集章', '完成梦幻集市集章', 2, '前往梦幻集市完成集章或扫码确认。', '', '5', '4.1馆', '20260711', 'default', 130, 1),
+			('default-20260711-boardgame', '', '一起桌游', '桌游试玩挑战', '完成桌游试玩挑战', 2, '在桌游区域完成试玩互动后出示二维码。', '', '7', '5.1馆', '20260711', 'default', 140, 1),
+			('default-20260712-parade', '', '3馆', '主题巡游点', '完成主题巡游互动', 3, '在主题巡游点完成互动并出示二维码。', '', '4', '3馆', '20260712', 'default', 210, 1),
+			('default-20260712-heart', '', '恋恋心声', '恋恋心声互动', '完成恋恋心声互动', 5, '在恋恋心声区域完成指定互动。', '', '5', '4.1馆', '20260712', 'default', 220, 1),
+			('default-20260712-game', '', '游戏世界', '游戏世界挑战', '完成游戏世界挑战', 2, '前往游戏世界完成试玩或扫码确认。', '', '3', '2.1馆', '20260712', 'default', 230, 1),
+			('default-20260712-pain', '', '痛无止境', '痛无止境集章', '完成痛无止境集章', 2, '在痛无止境区域完成集章互动。', '', '7', '5.1馆', '20260712', 'default', 240, 1)
+		ON CONFLICT(id) DO UPDATE SET
+			external_id = excluded.external_id,
+			group_name = excluded.group_name,
+			name = excluded.name,
+			title = excluded.title,
+			reward_coins = excluded.reward_coins,
+			description = excluded.description,
+			image_url = excluded.image_url,
+			venue_id = excluded.venue_id,
+			venue_name = excluded.venue_name,
+			event_day = excluded.event_day,
+			sort_order = excluded.sort_order,
+			enabled = 1
+		WHERE tasks.sync_source = 'default'
 	`)
 	return err
 }
@@ -720,11 +772,15 @@ func (s *Store) TaskSyncState(ctx context.Context) (TaskSyncState, error) {
 }
 
 func (s *Store) GroupTasks(ctx context.Context, groupID string) ([]domain.TaskStatus, error) {
+	eventDay, err := s.groupEventDay(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
 	members, err := s.groupMembers(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
-	tasks, err := s.enabledTasks(ctx)
+	tasks, err := s.enabledTasks(ctx, eventDay)
 	if err != nil {
 		return nil, err
 	}
@@ -755,6 +811,14 @@ func (s *Store) GroupTasks(ctx context.Context, groupID string) ([]domain.TaskSt
 		}
 	}
 	return tasks, nil
+}
+
+func (s *Store) groupEventDay(ctx context.Context, groupID string) (string, error) {
+	var day string
+	if err := s.db.QueryRowContext(ctx, `SELECT day FROM groups WHERE id = ?`, groupID).Scan(&day); err != nil {
+		return "", err
+	}
+	return normalizeEventDay(day), nil
 }
 
 func (s *Store) TaskByID(ctx context.Context, taskID string) (domain.TaskStatus, error) {
@@ -978,14 +1042,14 @@ func (s *Store) groupMembers(ctx context.Context, groupID string) ([]domain.Memb
 	return members, rows.Err()
 }
 
-func (s *Store) enabledTasks(ctx context.Context) ([]domain.TaskStatus, error) {
+func (s *Store) enabledTasks(ctx context.Context, eventDay string) ([]domain.TaskStatus, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, external_id, group_name, name, title, reward_coins, description,
 			image_url, venue_id, venue_name, event_day, sync_source, sort_order
 		FROM tasks
-		WHERE enabled = 1
+		WHERE enabled = 1 AND event_day = ?
 		ORDER BY sort_order ASC, id ASC
-	`)
+	`, eventDay)
 	if err != nil {
 		return nil, err
 	}
@@ -1014,6 +1078,19 @@ func (s *Store) enabledTasks(ctx context.Context) ([]domain.TaskStatus, error) {
 		tasks = append(tasks, task)
 	}
 	return tasks, rows.Err()
+}
+
+func normalizeEventDay(day string) string {
+	switch day {
+	case "friday":
+		return "20260710"
+	case "saturday":
+		return "20260711"
+	case "sunday":
+		return "20260712"
+	default:
+		return day
+	}
 }
 
 type completionKey struct {

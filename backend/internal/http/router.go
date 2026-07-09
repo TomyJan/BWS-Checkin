@@ -47,6 +47,7 @@ func NewRouterWithLogger(deps Deps, logger *slog.Logger) http.Handler {
 		r.Get("/group/detail", h.groupDetail)
 		r.Post("/group/join", h.joinGroup)
 		r.Post("/group/member/remove", h.removeMember)
+		r.Post("/group/task/sync", h.syncGroupTasks)
 		r.Get("/group/tasks", h.groupTasks)
 		r.Get("/task/sync/status", h.taskSyncStatus)
 		r.Post("/task/sync", h.syncTasks)

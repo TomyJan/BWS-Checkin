@@ -633,6 +633,49 @@ func (h Handler) groupTasks(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, map[string][]domain.TaskStatus{"tasks": tasks})
 }
 
+func (h Handler) syncGroupTasks(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var input groupIDRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeBusinessError(w, "invalid_json", "invalid JSON")
+		return
+	}
+	if input.GroupID == "" {
+		writeBusinessError(w, "group_id_required", "")
+		return
+	}
+	if !h.requireOwner(w, r, input.GroupID, user.ID) {
+		return
+	}
+	if h.deps.TaskSync == nil {
+		writeBusinessError(w, "task_sync_disabled", "")
+		return
+	}
+	account, err := h.deps.Store.BilibiliAccount(r.Context(), user.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeBusinessError(w, "creator_bilibili_account_required", "")
+		return
+	}
+	if err != nil {
+		writeBusinessError(w, "bilibili_account_load_failed", err.Error())
+		return
+	}
+	if err := h.deps.TaskSync.SyncWithAccount(r.Context(), account); err != nil {
+		writeBusinessError(w, "task_sync_failed", err.Error())
+		return
+	}
+	state, err := h.deps.Store.TaskSyncState(r.Context())
+	if err != nil {
+		writeBusinessError(w, "task_sync_status_failed", err.Error())
+		return
+	}
+	h.audit(r, user.ID, "task.sync", input.GroupID, "", "")
+	writeOK(w, map[string]store.TaskSyncState{"sync": state})
+}
+
 func (h Handler) taskSyncStatus(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.currentUser(w, r); !ok {
 		return
@@ -898,27 +941,28 @@ func writeNotFoundOrForbidden(w http.ResponseWriter, err error) {
 
 func businessErrorMessage(code string, fallback string) string {
 	messages := map[string]string{
-		"current_user_load_failed": "当前用户加载失败，请重新登录",
-		"file_required":            "请选择二维码图片",
-		"group_access_denied":      "互助组不存在或你无权访问",
-		"group_archived":           "互助组已归档，不能继续操作",
-		"group_id_conflict":        "互助组 ID 已存在或输入不合法",
-		"group_id_required":        "请输入互助组 ID",
-		"group_join_failed":        "加入互助组失败，请稍后重试",
-		"group_join_locked":        "互助组已锁定，暂时不能加入",
-		"group_not_found":          "互助组不存在",
-		"invalid_group_input":      "请填写完整的互助组信息",
-		"invalid_image":            "二维码图片无法识别",
-		"invalid_json":             "请求格式不正确",
-		"invalid_upload":           "上传内容无效",
-		"login_required":           "请先登录",
-		"owner_role_required":      "只有创建者可以执行此操作",
-		"qr_delete_failed":         "删除二维码失败，请稍后重试",
-		"qr_not_found":             "二维码图片不存在",
-		"qr_save_failed":           "保存二维码失败，请稍后重试",
-		"qr_update_failed":         "更新二维码失败，请稍后重试",
-		"unsupported_image_type":   "只支持 PNG、JPG、JPEG 或 WebP 图片",
-		"user_id_required":         "缺少用户 ID",
+		"current_user_load_failed":          "当前用户加载失败，请重新登录",
+		"creator_bilibili_account_required": "创建者需要先在个人中心完成 B 站扫码登录",
+		"file_required":                     "请选择二维码图片",
+		"group_access_denied":               "互助组不存在或你无权访问",
+		"group_archived":                    "互助组已归档，不能继续操作",
+		"group_id_conflict":                 "互助组 ID 已存在或输入不合法",
+		"group_id_required":                 "请输入互助组 ID",
+		"group_join_failed":                 "加入互助组失败，请稍后重试",
+		"group_join_locked":                 "互助组已锁定，暂时不能加入",
+		"group_not_found":                   "互助组不存在",
+		"invalid_group_input":               "请填写完整的互助组信息",
+		"invalid_image":                     "二维码图片无法识别",
+		"invalid_json":                      "请求格式不正确",
+		"invalid_upload":                    "上传内容无效",
+		"login_required":                    "请先登录",
+		"owner_role_required":               "只有创建者可以执行此操作",
+		"qr_delete_failed":                  "删除二维码失败，请稍后重试",
+		"qr_not_found":                      "二维码图片不存在",
+		"qr_save_failed":                    "保存二维码失败，请稍后重试",
+		"qr_update_failed":                  "更新二维码失败，请稍后重试",
+		"unsupported_image_type":            "只支持 PNG、JPG、JPEG 或 WebP 图片",
+		"user_id_required":                  "缺少用户 ID",
 	}
 	if message, ok := messages[code]; ok {
 		return message
