@@ -315,7 +315,7 @@ body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .task-picker-title .MuiIconButton-root {
@@ -376,16 +376,20 @@ body {
   flex-direction: column;
   justify-content: flex-start;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   gap: 10px;
   padding: 14px 16px 16px !important;
-  overflow-y: auto;
+  overflow: visible;
 }
 
 .task-picker-card {
   min-width: 0;
-  height: 126px;
-  flex: 0 0 126px;
+  height: 126px !important;
+  min-height: 126px !important;
+  max-height: 126px !important;
+  flex: 0 0 126px !important;
+  flex-grow: 0 !important;
+  flex-shrink: 0 !important;
   display: grid !important;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: flex-start !important;
