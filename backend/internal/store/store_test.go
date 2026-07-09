@@ -13,6 +13,8 @@ import (
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
+const defaultTaskID = "default:3001:20260710:1"
+
 func TestUserIDIsUUIDString(t *testing.T) {
 	s := newTestStore(t)
 	user := mustCreateUser(t, s, "oidc-user", "User")
@@ -55,10 +57,10 @@ func TestCompleteTaskIsIdempotent(t *testing.T) {
 		t.Fatalf("join group: %v", err)
 	}
 
-	if err := s.MarkComplete(t.Context(), "bw2026-fri", "rainbow-station", member.ID, owner.ID); err != nil {
+	if err := s.MarkComplete(t.Context(), "bw2026-fri", defaultTaskID, member.ID, owner.ID); err != nil {
 		t.Fatalf("mark complete: %v", err)
 	}
-	if err := s.MarkComplete(t.Context(), "bw2026-fri", "rainbow-station", member.ID, owner.ID); err != nil {
+	if err := s.MarkComplete(t.Context(), "bw2026-fri", defaultTaskID, member.ID, owner.ID); err != nil {
 		t.Fatalf("repeat mark complete: %v", err)
 	}
 
@@ -123,6 +125,40 @@ func TestGroupTasksFilterByEventDate(t *testing.T) {
 	for _, task := range tasks {
 		if task.EventDay != "20260711" {
 			t.Fatalf("task %s event day = %q, want 20260711", task.ID, task.EventDay)
+		}
+	}
+}
+
+func TestDefaultTasksUsePersistedBilibiliDataForAllEventDays(t *testing.T) {
+	s := newTestStore(t)
+	owner := mustCreateUser(t, s, "oidc-owner", "Owner")
+	for _, tt := range []struct {
+		groupID string
+		day     string
+		wantID  string
+	}{
+		{groupID: "bw2026-day1", day: "20260710", wantID: "default:3001:20260710:1"},
+		{groupID: "bw2026-day2", day: "20260711", wantID: "default:3001:20260711:1"},
+		{groupID: "bw2026-day3", day: "20260712", wantID: "default:3001:20260712:1"},
+	} {
+		if err := s.CreateGroup(t.Context(), CreateGroupInput{
+			ID: tt.groupID, Name: tt.groupID, Day: tt.day, OwnerUserID: owner.ID,
+		}); err != nil {
+			t.Fatalf("create group %s: %v", tt.groupID, err)
+		}
+		tasks, err := s.GroupTasks(t.Context(), tt.groupID)
+		if err != nil {
+			t.Fatalf("group tasks %s: %v", tt.groupID, err)
+		}
+		if len(tasks) != 16 {
+			t.Fatalf("%s tasks length = %d, want 16", tt.day, len(tasks))
+		}
+		first := tasks[0]
+		if first.ID != tt.wantID || first.ExternalID != "3001" || first.EventDay != tt.day {
+			t.Fatalf("%s first task = %+v, want id %s external 3001", tt.day, first, tt.wantID)
+		}
+		if first.Name != "才浅战国水晶杯共创" || first.ImageURL == "" || first.RewardCoins != 2 {
+			t.Fatalf("%s first task metadata = %+v", tt.day, first)
 		}
 	}
 }
@@ -202,12 +238,12 @@ func TestSyncTaskCompletionKeepsNewestState(t *testing.T) {
 	oldTime := time.Date(2026, 7, 8, 10, 0, 0, 0, time.UTC)
 	newTime := oldTime.Add(5 * time.Minute)
 	if err := s.SyncTaskCompletion(t.Context(), SyncTaskCompletionInput{
-		GroupID: "bw2026-fri", TaskID: "rainbow-station", TargetUserID: member.ID, CheckedByUserID: owner.ID, Completed: true, UpdatedAt: newTime,
+		GroupID: "bw2026-fri", TaskID: defaultTaskID, TargetUserID: member.ID, CheckedByUserID: owner.ID, Completed: true, UpdatedAt: newTime,
 	}); err != nil {
 		t.Fatalf("new complete sync: %v", err)
 	}
 	if err := s.SyncTaskCompletion(t.Context(), SyncTaskCompletionInput{
-		GroupID: "bw2026-fri", TaskID: "rainbow-station", TargetUserID: member.ID, CheckedByUserID: owner.ID, Completed: false, UpdatedAt: oldTime,
+		GroupID: "bw2026-fri", TaskID: defaultTaskID, TargetUserID: member.ID, CheckedByUserID: owner.ID, Completed: false, UpdatedAt: oldTime,
 	}); err != nil {
 		t.Fatalf("old uncomplete sync: %v", err)
 	}
@@ -221,7 +257,7 @@ func TestSyncTaskCompletionKeepsNewestState(t *testing.T) {
 	}
 
 	if err := s.SyncTaskCompletion(t.Context(), SyncTaskCompletionInput{
-		GroupID: "bw2026-fri", TaskID: "rainbow-station", TargetUserID: member.ID, CheckedByUserID: owner.ID, Completed: false, UpdatedAt: newTime.Add(time.Minute),
+		GroupID: "bw2026-fri", TaskID: defaultTaskID, TargetUserID: member.ID, CheckedByUserID: owner.ID, Completed: false, UpdatedAt: newTime.Add(time.Minute),
 	}); err != nil {
 		t.Fatalf("new uncomplete sync: %v", err)
 	}
@@ -305,7 +341,7 @@ func TestLiveCompletionLocksManualSync(t *testing.T) {
 	liveCheckedAt := time.Date(2026, 7, 10, 13, 0, 0, 0, time.UTC)
 	if err := s.UpsertLiveTaskCompletion(t.Context(), LiveTaskCompletionInput{
 		GroupID:       "bw2026-live",
-		TaskID:        "rainbow-station",
+		TaskID:        defaultTaskID,
 		TargetUserID:  member.ID,
 		Status:        domain.CompletionStatusLiveCompleted,
 		LiveCheckedAt: liveCheckedAt,
@@ -316,7 +352,7 @@ func TestLiveCompletionLocksManualSync(t *testing.T) {
 
 	err := s.SyncTaskCompletion(t.Context(), SyncTaskCompletionInput{
 		GroupID:         "bw2026-live",
-		TaskID:          "rainbow-station",
+		TaskID:          defaultTaskID,
 		TargetUserID:    member.ID,
 		CheckedByUserID: owner.ID,
 		Completed:       false,
@@ -403,7 +439,7 @@ func TestGroupUpdateLockAndArchive(t *testing.T) {
 		t.Fatalf("join archived group err = %v, want ErrGroupArchived", err)
 	}
 	if err := s.SyncTaskCompletion(t.Context(), SyncTaskCompletionInput{
-		GroupID: "bw2026-fri", TaskID: "rainbow-station", TargetUserID: member.ID, CheckedByUserID: owner.ID, Completed: true, UpdatedAt: time.Now().UTC(),
+		GroupID: "bw2026-fri", TaskID: defaultTaskID, TargetUserID: member.ID, CheckedByUserID: owner.ID, Completed: true, UpdatedAt: time.Now().UTC(),
 	}); !errors.Is(err, ErrGroupArchived) {
 		t.Fatalf("sync archived group err = %v, want ErrGroupArchived", err)
 	}

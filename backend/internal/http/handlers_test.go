@@ -29,6 +29,8 @@ import (
 	"bws-checkin/backend/internal/tasksync"
 )
 
+const defaultTaskID = "default:3001:20260710:1"
+
 func TestDevLoginAndMe(t *testing.T) {
 	s := newTestStore(t)
 	h := NewRouter(Deps{Store: s, DevAuth: true})
@@ -592,7 +594,7 @@ func TestManualTaskActionsRejectLiveCompletion(t *testing.T) {
 
 	if err := s.UpsertLiveTaskCompletion(t.Context(), store.LiveTaskCompletionInput{
 		GroupID:       "bw2026-fri",
-		TaskID:        "rainbow-station",
+		TaskID:        defaultTaskID,
 		TargetUserID:  memberID,
 		Status:        domain.CompletionStatusLiveCompleted,
 		LiveCheckedAt: time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC),
@@ -602,7 +604,7 @@ func TestManualTaskActionsRejectLiveCompletion(t *testing.T) {
 	}
 
 	for _, path := range []string{"/api/v1/task/complete", "/api/v1/task/uncomplete"} {
-		req = jsonRequest(t, http.MethodPost, path, map[string]any{"groupId": "bw2026-fri", "taskId": "rainbow-station", "userId": memberID})
+		req = jsonRequest(t, http.MethodPost, path, map[string]any{"groupId": "bw2026-fri", "taskId": defaultTaskID, "userId": memberID})
 		for _, c := range ownerCookies {
 			req.AddCookie(c)
 		}
@@ -985,7 +987,7 @@ func TestGroupManagementRequiresOwnerAndControlsJoinArchive(t *testing.T) {
 	assertBusinessError(t, w, "group_archived")
 
 	req = jsonRequest(t, http.MethodPost, "/api/v1/task/complete", map[string]any{
-		"groupId": "bw2026-fri", "taskId": "rainbow-station", "userId": memberID,
+		"groupId": "bw2026-fri", "taskId": defaultTaskID, "userId": memberID,
 	})
 	for _, c := range ownerCookies {
 		req.AddCookie(c)
@@ -1049,8 +1051,8 @@ func TestAuditLogsKeyBusinessActions(t *testing.T) {
 		{"/api/v1/group/update", map[string]any{"groupId": "bw2026-fri", "name": "BW2026 周六", "day": "saturday"}},
 		{"/api/v1/group/join-lock", map[string]any{"groupId": "bw2026-fri"}},
 		{"/api/v1/group/join-unlock", map[string]any{"groupId": "bw2026-fri"}},
-		{"/api/v1/task/complete", map[string]any{"groupId": "bw2026-fri", "taskId": "rainbow-station", "userId": memberID}},
-		{"/api/v1/task/uncomplete", map[string]any{"groupId": "bw2026-fri", "taskId": "rainbow-station", "userId": memberID}},
+		{"/api/v1/task/complete", map[string]any{"groupId": "bw2026-fri", "taskId": defaultTaskID, "userId": memberID}},
+		{"/api/v1/task/uncomplete", map[string]any{"groupId": "bw2026-fri", "taskId": defaultTaskID, "userId": memberID}},
 		{"/api/v1/group/member/remove", map[string]any{"groupId": "bw2026-fri", "userId": memberID}},
 	}
 	for _, action := range actions {

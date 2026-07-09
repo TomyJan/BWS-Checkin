@@ -268,40 +268,83 @@ func (s *Store) migrate() error {
 }
 
 func (s *Store) seedDefaultTasks() error {
-	_, err := s.db.Exec(`
-		INSERT INTO tasks (
-			id, external_id, group_name, name, title, reward_coins, description,
-			image_url, venue_id, venue_name, event_day, sync_source, sort_order, enabled
-		)
-		VALUES
-			('rainbow-station', '', '8.1馆', '彩虹补给站', '完成彩虹补给站互动', 3, '在彩虹补给站完成互动并出示二维码。', '', '1', '8.1馆', '20260710', 'default', 10, 1),
-			('stage-support', '', '8.1馆', '舞台应援任务', '完成主舞台应援', 5, '在主舞台完成应援任务并领取奖励。', '', '1', '8.1馆', '20260710', 'default', 20, 1),
-			('stamp-rally', '', '1.1馆', '乐园集章点', '完成乐园集章点打卡', 2, '到达集章点完成盖章或扫码确认。', '', '2', '1.1馆', '20260710', 'default', 30, 1),
-			('photo-spot', '', '3馆', '主题合影点', '完成主题合影点互动', 2, '在主题合影点完成互动拍照后出示二维码。', '', '4', '3馆', '20260710', 'default', 40, 1),
-			('default-20260711-supply', '', '1.1馆', '乐园补给站', '领取乐园补给奖励', 3, '在 1.1 馆补给点完成互动并出示二维码。', '', '2', '1.1馆', '20260711', 'default', 110, 1),
-			('default-20260711-virtual', '', '虚拟乐园', '虚拟乐园应援', '完成虚拟乐园互动', 5, '在虚拟乐园完成指定互动并领取乐园币。', '', '6', '6.1馆', '20260711', 'default', 120, 1),
-			('default-20260711-market', '', '梦幻集市', '梦幻集市集章', '完成梦幻集市集章', 2, '前往梦幻集市完成集章或扫码确认。', '', '5', '4.1馆', '20260711', 'default', 130, 1),
-			('default-20260711-boardgame', '', '一起桌游', '桌游试玩挑战', '完成桌游试玩挑战', 2, '在桌游区域完成试玩互动后出示二维码。', '', '7', '5.1馆', '20260711', 'default', 140, 1),
-			('default-20260712-parade', '', '3馆', '主题巡游点', '完成主题巡游互动', 3, '在主题巡游点完成互动并出示二维码。', '', '4', '3馆', '20260712', 'default', 210, 1),
-			('default-20260712-heart', '', '恋恋心声', '恋恋心声互动', '完成恋恋心声互动', 5, '在恋恋心声区域完成指定互动。', '', '5', '4.1馆', '20260712', 'default', 220, 1),
-			('default-20260712-game', '', '游戏世界', '游戏世界挑战', '完成游戏世界挑战', 2, '前往游戏世界完成试玩或扫码确认。', '', '3', '2.1馆', '20260712', 'default', 230, 1),
-			('default-20260712-pain', '', '痛无止境', '痛无止境集章', '完成痛无止境集章', 2, '在痛无止境区域完成集章互动。', '', '7', '5.1馆', '20260712', 'default', 240, 1)
-		ON CONFLICT(id) DO UPDATE SET
-			external_id = excluded.external_id,
-			group_name = excluded.group_name,
-			name = excluded.name,
-			title = excluded.title,
-			reward_coins = excluded.reward_coins,
-			description = excluded.description,
-			image_url = excluded.image_url,
-			venue_id = excluded.venue_id,
-			venue_name = excluded.venue_name,
-			event_day = excluded.event_day,
-			sort_order = excluded.sort_order,
-			enabled = 1
-		WHERE tasks.sync_source = 'default'
-	`)
-	return err
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`UPDATE tasks SET enabled = 0 WHERE sync_source = 'default'`); err != nil {
+		return err
+	}
+	for _, day := range []string{"20260710", "20260711", "20260712"} {
+		for index, task := range defaultTaskSeeds {
+			sortOrder := task.SortOrder + index*10
+			if day == "20260711" {
+				sortOrder += 1000
+			}
+			if day == "20260712" {
+				sortOrder += 2000
+			}
+			id := fmt.Sprintf("default:%s:%s:%s", task.ExternalID, day, task.VenueID)
+			_, err := tx.Exec(`
+				INSERT INTO tasks (
+					id, external_id, group_name, name, title, reward_coins, description,
+					image_url, venue_id, venue_name, event_day, sync_source, sort_order, enabled
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'default', ?, 1)
+				ON CONFLICT(id) DO UPDATE SET
+					external_id = excluded.external_id,
+					group_name = excluded.group_name,
+					name = excluded.name,
+					title = excluded.title,
+					reward_coins = excluded.reward_coins,
+					description = excluded.description,
+					image_url = excluded.image_url,
+					venue_id = excluded.venue_id,
+					venue_name = excluded.venue_name,
+					event_day = excluded.event_day,
+					sort_order = excluded.sort_order,
+					enabled = 1
+				WHERE tasks.sync_source = 'default'
+			`, id, task.ExternalID, task.GroupName, task.Name, task.Title, task.RewardCoins, task.Description, task.ImageURL, task.VenueID, task.VenueName, day, sortOrder)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
+type defaultTaskSeed struct {
+	ExternalID  string
+	GroupName   string
+	Name        string
+	Title       string
+	RewardCoins int
+	Description string
+	ImageURL    string
+	VenueID     string
+	VenueName   string
+	SortOrder   int
+}
+
+var defaultTaskSeeds = []defaultTaskSeed{
+	{ExternalID: "3001", GroupName: "8.1馆", Name: "才浅战国水晶杯共创", Title: "才浅战国水晶杯共创", RewardCoins: 2, Description: "每人可上手体验5分钟，一起见证战国水晶杯的“诞生”，并领取共创证书。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/rh0Erv23ZT.png", VenueID: "1", VenueName: "8.1馆", SortOrder: 10},
+	{ExternalID: "3020", GroupName: "8.1馆", Name: "寰宇驾考", Title: "寰宇驾考", RewardCoins: 2, Description: "小球掉出平衡板即为失败，不可重放。小球掉入洞内即完成打卡任务。每轮3次机会，失败可重排队再次挑战。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/CZ5IVL8Vk8.jpg", VenueID: "1", VenueName: "8.1馆", SortOrder: 10},
+	{ExternalID: "3040", GroupName: "1.1馆", Name: "广播剧《小蘑菇》", Title: "广播剧《小蘑菇》", RewardCoins: 1, Description: "1.玩家依次入场限时60秒投袋。2.在安折处领3个孢子，投中至少1个进陆沨袋，即完成打卡任务。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/Phzd8Pi1N4.jpg", VenueID: "2", VenueName: "1.1馆", SortOrder: 10},
+	{ExternalID: "3060", GroupName: "1.1馆", Name: "LASER&MANTA", Title: "LASER&MANTA", RewardCoins: 1, Description: "1.玩家依次进入场地；2.投掷大乔滚爷特制骰子，即可在BW乐园内成功打卡。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/7X4Hg4Ial9.jpg", VenueID: "2", VenueName: "1.1馆", SortOrder: 10},
+	{ExternalID: "3080", GroupName: "1.1馆", Name: "一起桌游-国王牌", Title: "一起桌游-国王牌", RewardCoins: 2, Description: "来和NPC对决纸牌桌游！输了就掷人生重来骰，即刻重新出击。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/FI042ke0Pl.jpg", VenueID: "2", VenueName: "1.1馆", SortOrder: 10},
+	{ExternalID: "3100", GroupName: "2.1馆", Name: "一起来逛游乐园", Title: "一起来逛游乐园", RewardCoins: 2, Description: "参与丢沙包、答题、识图等游戏获得游戏币，2枚币完成打卡并获得BW限定风车，更有街机、人偶合拍等体验", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/YC1rb1Avz5.jpg", VenueID: "3", VenueName: "2.1馆", SortOrder: 10},
+	{ExternalID: "3120", GroupName: "3馆", Name: "AMD Yes 涂鸦乐园", Title: "AMD Yes 涂鸦乐园", RewardCoins: 1, Description: "1、扫码注册小程序签到。2、在AMD展区为AMD YES墙填色，对镜头喊出AMD YES！即完成打卡任务", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260618/a31a3a243f4d5d1b14b456973fa6db84/9pZLWj9Dhw.jpg", VenueID: "4", VenueName: "3馆", SortOrder: 10},
+	{ExternalID: "3140", GroupName: "3馆", Name: "棕色尘埃2", Title: "棕色尘埃2", RewardCoins: 1, Description: "关注棕色尘埃2Bilibili官方账号，即可完成打卡任务", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/7422/11591/20260625/a31a3a243f4d5d1b14b456973fa6db84/1OTbgdWMhl.jpg", VenueID: "4", VenueName: "3馆", SortOrder: 10},
+	{ExternalID: "3160", GroupName: "4.1馆", Name: "BW独立游戏", Title: "BW独立游戏", RewardCoins: 1, Description: "玩家现场体验BW独立游戏区任意独立游戏后，在留言墙上用便利贴留言，即可完成打卡任务。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/d41d8cd98f00b204e9800998ecf8427e/XLtdmC07m3.jpg", VenueID: "5", VenueName: "4.1馆", SortOrder: 10},
+	{ExternalID: "3180", GroupName: "4.1馆", Name: "Vsinger", Title: "Vsinger", RewardCoins: 2, Description: "1.玩家依次入场2.完成Vsinger音游挑战或洛天依×景德镇联名区盖章打卡，即完成打卡任务。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/Xke0f1WUqw.png", VenueID: "5", VenueName: "4.1馆", SortOrder: 10},
+	{ExternalID: "3210", GroupName: "4.1馆", Name: "黑神话官方快闪", Title: "黑神话官方快闪", RewardCoins: 1, Description: "1.使用bilibili APP扫描店铺二维码2.领取5元店铺优惠券，领券将自动关注黑神话官方账号，关注即完成打卡任务", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/7422/11591/20260626/a31a3a243f4d5d1b14b456973fa6db84/JGER28TRZ4.jpg", VenueID: "5", VenueName: "4.1馆", SortOrder: 10},
+	{ExternalID: "3220", GroupName: "5.1馆", Name: "魔方家族地图集章", Title: "魔方家族地图集章", RewardCoins: 2, Description: "前往魔方工作室展台兑换处，领取「魔方家族地图」，完成地图集章任务后即打卡成功！更有惊喜好礼！", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260618/a31a3a243f4d5d1b14b456973fa6db84/gRbzsgQvuU.png", VenueID: "7", VenueName: "5.1馆", SortOrder: 10},
+	{ExternalID: "3240", GroupName: "5.1馆", Name: "BWx宇树", Title: "BWx宇树", RewardCoins: 1, Description: "1.玩家依次进入场地；2.玩家控制机器狗，60s内越过障碍抵达赛道终点，即完成打卡任务。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260616/a31a3a243f4d5d1b14b456973fa6db84/zGR2J2NhSx.jpg", VenueID: "7", VenueName: "5.1馆", SortOrder: 10},
+	{ExternalID: "3260", GroupName: "6.1馆", Name: "登陆大会员展台", Title: "登陆大会员展台", RewardCoins: 1, Description: "登陆6.1馆无限副本大陆展区大会员展台打卡即完成打卡任务，探索三大副本集印记还可领专属奖励及抽奖资格", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/bW4BfKgLMP.jpg", VenueID: "6", VenueName: "6.1馆", SortOrder: 10},
+	{ExternalID: "3300", GroupName: "6.1馆", Name: "小马宝莉友谊魔法站", Title: "小马宝莉友谊魔法站", RewardCoins: 1, Description: "关注小马宝莉官方账号，按要求发布笔记，即可获得小马宝莉BW限定周边一套（BW限定发饰及PR卡）。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260622/a31a3a243f4d5d1b14b456973fa6db84/kBbqSpaidP.jpg", VenueID: "6", VenueName: "6.1馆", SortOrder: 10},
+	{ExternalID: "3280", GroupName: "6.1馆", Name: "特聘行动·歼灭罗刹", Title: "特聘行动·歼灭罗刹", RewardCoins: 2, Description: "玩家排队参与“特聘行动·歼灭罗刹\"互动，每人三次投掷机会，成功投中1次即可打卡，失败可重复挑战。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/1KOZLzgmbo.jpg", VenueID: "6", VenueName: "6.1馆", SortOrder: 10},
 }
 
 func (s *Store) ensureTaskCompletionColumn(name string, definition string) error {
