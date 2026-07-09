@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"bws-checkin/backend/internal/bilibili"
+	"bws-checkin/backend/internal/domain"
 	"bws-checkin/backend/internal/store"
 	"bws-checkin/backend/internal/tasksync"
 )
@@ -434,6 +435,198 @@ func TestTaskSyncAPI(t *testing.T) {
 	assertOK(t, w)
 	if !strings.Contains(w.Body.String(), "2026-07-10T12:00:00Z") {
 		t.Fatalf("expected sync status timestamp, got %s", w.Body.String())
+	}
+}
+
+func TestManualTaskActionsRejectLiveCompletion(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true})
+	ownerCookies := loginForTest(t, h, "Owner")
+	memberCookies := loginForTest(t, h, "Member")
+	memberID := userIDForCookies(t, h, memberCookies)
+
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/create", map[string]any{"id": "bw2026-fri", "name": "BW2026 周五", "day": "friday"})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/join", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range memberCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	if err := s.UpsertLiveTaskCompletion(t.Context(), store.LiveTaskCompletionInput{
+		GroupID:       "bw2026-fri",
+		TaskID:        "rainbow-station",
+		TargetUserID:  memberID,
+		Status:        domain.CompletionStatusLiveCompleted,
+		LiveCheckedAt: time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC),
+		UpdatedAt:     time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("upsert live completion: %v", err)
+	}
+
+	for _, path := range []string{"/api/v1/task/complete", "/api/v1/task/uncomplete"} {
+		req = jsonRequest(t, http.MethodPost, path, map[string]any{"groupId": "bw2026-fri", "taskId": "rainbow-station", "userId": memberID})
+		for _, c := range ownerCookies {
+			req.AddCookie(c)
+		}
+		w = httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		assertBusinessError(t, w, "live_completion_locked")
+	}
+}
+
+func TestRefreshTaskStatusWritesLiveCompletion(t *testing.T) {
+	s := newTestStore(t)
+	biliServer := newBilibiliPointsStatusTestServer(t, true)
+	h := NewRouter(Deps{
+		Store:                s,
+		DevAuth:              true,
+		Bilibili:             bilibili.NewClient(bilibili.ClientOptions{APIBaseURL: biliServer.URL, PassportBaseURL: biliServer.URL, HTTPClient: biliServer.Client()}),
+		BilibiliCookieSecret: "cookie-secret",
+	})
+	ownerCookies := loginForTest(t, h, "Owner")
+	memberCookies := loginForTest(t, h, "Member")
+	memberID := userIDForCookies(t, h, memberCookies)
+	encryptedCookies, err := bilibili.EncryptCookieJar("cookie-secret", []*http.Cookie{{Name: "SESSDATA", Value: "session-value"}})
+	if err != nil {
+		t.Fatalf("encrypt cookies: %v", err)
+	}
+	if err := s.SaveBilibiliAccount(t.Context(), domain.BilibiliAccount{
+		UserID:           memberID,
+		MID:              "123456",
+		Uname:            "member",
+		CookieCiphertext: encryptedCookies,
+	}); err != nil {
+		t.Fatalf("save bilibili account: %v", err)
+	}
+	if err := s.ReplaceBilibiliTasks(t.Context(), []store.SyncedTaskInput{{
+		ID: "bilibili:5001:20260710:1", ExternalID: "5001", GroupName: "8.1馆",
+		Name: "官方任务", Title: "官方任务", VenueID: "1", VenueName: "8.1馆", EventDay: "20260710", SortOrder: 10,
+	}}); err != nil {
+		t.Fatalf("replace tasks: %v", err)
+	}
+
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/create", map[string]any{"id": "bw2026-fri", "name": "BW2026 周五", "day": "friday"})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/join", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range memberCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/task/status/refresh", map[string]any{
+		"groupId": "bw2026-fri", "taskId": "bilibili:5001:20260710:1", "userId": memberID,
+	})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	tasks, err := s.GroupTasks(t.Context(), "bw2026-fri")
+	if err != nil {
+		t.Fatalf("group tasks: %v", err)
+	}
+	entry := completionForMember(t, tasks[0], memberID)
+	if entry.Status != domain.CompletionStatusLiveCompleted || entry.Source != domain.CompletionSourceLive || !entry.Completed {
+		t.Fatalf("completion = %+v", entry)
+	}
+	if entry.CanToggle || !entry.CanRefresh {
+		t.Fatalf("live controls = canToggle:%v canRefresh:%v", entry.CanToggle, entry.CanRefresh)
+	}
+}
+
+func TestRefreshTaskStatusFailureMarksLiveStaleWithoutDowngrade(t *testing.T) {
+	s := newTestStore(t)
+	biliServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "remote failed", http.StatusBadGateway)
+	}))
+	defer biliServer.Close()
+	h := NewRouter(Deps{
+		Store:                s,
+		DevAuth:              true,
+		Bilibili:             bilibili.NewClient(bilibili.ClientOptions{APIBaseURL: biliServer.URL, PassportBaseURL: biliServer.URL, HTTPClient: biliServer.Client()}),
+		BilibiliCookieSecret: "cookie-secret",
+	})
+	ownerCookies := loginForTest(t, h, "Owner")
+	memberCookies := loginForTest(t, h, "Member")
+	memberID := userIDForCookies(t, h, memberCookies)
+	encryptedCookies, err := bilibili.EncryptCookieJar("cookie-secret", []*http.Cookie{{Name: "SESSDATA", Value: "session-value"}})
+	if err != nil {
+		t.Fatalf("encrypt cookies: %v", err)
+	}
+	if err := s.SaveBilibiliAccount(t.Context(), domain.BilibiliAccount{
+		UserID:           memberID,
+		MID:              "123456",
+		Uname:            "member",
+		CookieCiphertext: encryptedCookies,
+	}); err != nil {
+		t.Fatalf("save bilibili account: %v", err)
+	}
+	if err := s.ReplaceBilibiliTasks(t.Context(), []store.SyncedTaskInput{{
+		ID: "bilibili:5001:20260710:1", ExternalID: "5001", GroupName: "8.1馆",
+		Name: "官方任务", Title: "官方任务", VenueID: "1", VenueName: "8.1馆", EventDay: "20260710", SortOrder: 10,
+	}}); err != nil {
+		t.Fatalf("replace tasks: %v", err)
+	}
+
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/create", map[string]any{"id": "bw2026-fri", "name": "BW2026 周五", "day": "friday"})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/join", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range memberCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	if err := s.UpsertLiveTaskCompletion(t.Context(), store.LiveTaskCompletionInput{
+		GroupID: "bw2026-fri", TaskID: "bilibili:5001:20260710:1", TargetUserID: memberID,
+		Status: domain.CompletionStatusLiveCompleted, LiveCheckedAt: time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC), UpdatedAt: time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("upsert live completion: %v", err)
+	}
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/task/status/refresh", map[string]any{
+		"groupId": "bw2026-fri", "taskId": "bilibili:5001:20260710:1", "userId": memberID,
+	})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertBusinessError(t, w, "task_status_refresh_failed")
+
+	tasks, err := s.GroupTasks(t.Context(), "bw2026-fri")
+	if err != nil {
+		t.Fatalf("group tasks: %v", err)
+	}
+	entry := completionForMember(t, tasks[0], memberID)
+	if entry.Status != domain.CompletionStatusLiveCompleted || !entry.Completed || !entry.LiveStale {
+		t.Fatalf("completion after failed refresh = %+v", entry)
 	}
 }
 
@@ -960,6 +1153,17 @@ func decodeTasks(t *testing.T, w *httptest.ResponseRecorder) []taskResponseItem 
 	return body.Data.Tasks
 }
 
+func completionForMember(t *testing.T, task domain.TaskStatus, userID string) domain.MemberCompletion {
+	t.Helper()
+	for _, entry := range task.Members {
+		if entry.Member.ID == userID {
+			return entry
+		}
+	}
+	t.Fatalf("completion for user %s not found in %+v", userID, task.Members)
+	return domain.MemberCompletion{}
+}
+
 func userIDForCookies(t *testing.T, h http.Handler, cookies []*http.Cookie) string {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
@@ -1134,6 +1338,37 @@ func newBilibiliLoginTestServer(t *testing.T) *httptest.Server {
 		default:
 			http.NotFound(w, r)
 		}
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func newBilibiliPointsStatusTestServer(t *testing.T, completed bool) *httptest.Server {
+	t.Helper()
+	isPoint := 0
+	if completed {
+		isPoint = 1
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/x/activity/bws/offline/points" {
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.Header.Get("Cookie"); got != "SESSDATA=session-value" {
+			t.Fatalf("cookie header = %q", got)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"code": 0,
+			"data": map[string]any{
+				"points_list": map[string]any{
+					"20260710": map[string]any{
+						"points": []map[string]any{
+							{"id": 5001, "name": "官方任务", "unlocked": 3, "is_point": isPoint, "dic": "说明"},
+						},
+					},
+				},
+			},
+		})
 	}))
 	t.Cleanup(server.Close)
 	return server

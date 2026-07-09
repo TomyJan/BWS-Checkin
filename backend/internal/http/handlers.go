@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -691,6 +692,10 @@ func (h Handler) completeTask(w http.ResponseWriter, r *http.Request) {
 			writeBusinessError(w, "group_archived", err.Error())
 			return
 		}
+		if errors.Is(err, store.ErrLiveCompletionLocked) {
+			writeBusinessError(w, "live_completion_locked", err.Error())
+			return
+		}
 		writeBusinessError(w, "task_complete_failed", err.Error())
 		return
 	}
@@ -725,11 +730,99 @@ func (h Handler) uncompleteTask(w http.ResponseWriter, r *http.Request) {
 			writeBusinessError(w, "group_archived", err.Error())
 			return
 		}
+		if errors.Is(err, store.ErrLiveCompletionLocked) {
+			writeBusinessError(w, "live_completion_locked", err.Error())
+			return
+		}
 		writeBusinessError(w, "task_uncomplete_failed", err.Error())
 		return
 	}
 	h.audit(r, user.ID, "task.uncomplete", groupID, input.UserID, input.TaskID)
 	writeOK(w, map[string]bool{"ok": true})
+}
+
+func (h Handler) refreshTaskStatus(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var input taskCompletionRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeBusinessError(w, "invalid_json", "invalid JSON")
+		return
+	}
+	if h.deps.Bilibili == nil {
+		writeBusinessError(w, "bilibili_login_disabled", "")
+		return
+	}
+	if h.deps.BilibiliCookieSecret == "" {
+		writeBusinessError(w, "bilibili_cookie_secret_required", "")
+		return
+	}
+	if _, err := h.deps.Store.GroupByID(r.Context(), input.GroupID, user.ID); err != nil {
+		writeNotFoundOrForbidden(w, err)
+		return
+	}
+	task, err := h.deps.Store.TaskByID(r.Context(), input.TaskID)
+	if err != nil {
+		writeBusinessError(w, "task_not_found", "")
+		return
+	}
+	venueID, err := strconv.Atoi(task.VenueID)
+	if err != nil || venueID == 0 || task.EventDay == "" || task.ExternalID == "" {
+		writeBusinessError(w, "task_live_metadata_missing", "")
+		return
+	}
+	account, err := h.deps.Store.BilibiliAccount(r.Context(), input.UserID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeBusinessError(w, "bilibili_account_required", "")
+		return
+	}
+	if err != nil {
+		writeBusinessError(w, "bilibili_account_load_failed", err.Error())
+		return
+	}
+	cookies, err := bilibili.DecryptCookieJar(h.deps.BilibiliCookieSecret, account.CookieCiphertext)
+	if err != nil {
+		writeBusinessError(w, "bilibili_cookie_decrypt_failed", err.Error())
+		return
+	}
+	points, err := h.deps.Bilibili.OfflinePoints(r.Context(), bilibili.OfflinePointsRequest{
+		BID:     202601,
+		Year:    202601,
+		VenueID: venueID,
+		Day:     task.EventDay,
+	}, cookies)
+	if err != nil {
+		_ = h.deps.Store.MarkLiveTaskCompletionStale(r.Context(), input.GroupID, input.TaskID, input.UserID, time.Now().UTC())
+		writeBusinessError(w, "task_status_refresh_failed", err.Error())
+		return
+	}
+	completed := false
+	for _, point := range points {
+		if point.ID == task.ExternalID {
+			completed = point.Completed
+			break
+		}
+	}
+	status := domain.CompletionStatusLiveIncomplete
+	if completed {
+		status = domain.CompletionStatusLiveCompleted
+	}
+	now := time.Now().UTC()
+	if err := h.deps.Store.UpsertLiveTaskCompletion(r.Context(), store.LiveTaskCompletionInput{
+		GroupID:       input.GroupID,
+		TaskID:        input.TaskID,
+		TargetUserID:  input.UserID,
+		Status:        status,
+		LiveCheckedAt: now,
+		UpdatedAt:     now,
+	}); err != nil {
+		writeBusinessError(w, "task_status_save_failed", err.Error())
+		return
+	}
+	h.audit(r, user.ID, "task.status_refresh", input.GroupID, input.UserID, input.TaskID)
+	writeOK(w, map[string]string{"status": status})
 }
 
 func (h Handler) currentUser(w http.ResponseWriter, r *http.Request) (domain.User, bool) {

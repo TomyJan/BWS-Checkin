@@ -757,6 +757,31 @@ func (s *Store) GroupTasks(ctx context.Context, groupID string) ([]domain.TaskSt
 	return tasks, nil
 }
 
+func (s *Store) TaskByID(ctx context.Context, taskID string) (domain.TaskStatus, error) {
+	var task domain.TaskStatus
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, external_id, group_name, name, title, reward_coins, description,
+			image_url, venue_id, venue_name, event_day, sync_source, sort_order
+		FROM tasks
+		WHERE id = ?
+	`, taskID).Scan(
+		&task.ID,
+		&task.ExternalID,
+		&task.GroupName,
+		&task.Name,
+		&task.Title,
+		&task.RewardCoins,
+		&task.Description,
+		&task.ImageURL,
+		&task.VenueID,
+		&task.VenueName,
+		&task.EventDay,
+		&task.SyncSource,
+		&task.SortOrder,
+	)
+	return task, err
+}
+
 func (s *Store) MarkComplete(ctx context.Context, groupID string, taskID string, targetUserID string, checkedByUserID string) error {
 	return s.SyncTaskCompletion(ctx, SyncTaskCompletionInput{
 		GroupID:         groupID,
@@ -867,6 +892,15 @@ func (s *Store) UpsertLiveTaskCompletion(ctx context.Context, input LiveTaskComp
 			updated_at = excluded.updated_at
 		WHERE task_completions.source = 'manual' OR excluded.updated_at >= task_completions.updated_at
 	`, input.GroupID, input.TaskID, input.TargetUserID, input.TargetUserID, completed, status, updatedAt.Format(time.RFC3339Nano), liveCheckedAt.Format(time.RFC3339Nano), liveStale, updatedAt.Format(time.RFC3339Nano))
+	return err
+}
+
+func (s *Store) MarkLiveTaskCompletionStale(ctx context.Context, groupID string, taskID string, targetUserID string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE task_completions
+		SET live_stale = 1, updated_at = ?
+		WHERE group_id = ? AND task_id = ? AND target_user_id = ? AND source = 'live'
+	`, at.UTC().Format(time.RFC3339Nano), groupID, taskID, targetUserID)
 	return err
 }
 
