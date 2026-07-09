@@ -1,9 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { GroupPage } from "./GroupPage";
+
+const testDir = dirname(fileURLToPath(import.meta.url));
 
 function renderGroupPage() {
   const client = new QueryClient({
@@ -183,14 +188,14 @@ describe("GroupPage", () => {
     expect(screen.getByRole("tab", { name: "场馆打卡" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "舞台任务" })).toBeInTheDocument();
     expect(screen.getByTestId("task-icon-t1").querySelector("img")).toHaveAttribute("src", "/api/v1/task/image?taskId=t1");
-    expect(screen.getByText("完成彩虹补给站互动")).toBeInTheDocument();
+    expect(screen.queryByText("完成彩虹补给站互动")).not.toBeInTheDocument();
     expect(screen.getByText("乐园币 x3")).toBeInTheDocument();
     expect(screen.getByText("在彩虹补给站完成互动并出示二维码。")).toBeInTheDocument();
     expect(screen.queryByText("完成主舞台应援")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "舞台任务" }));
     expect(screen.getByTestId("task-icon-t2")).toBeInTheDocument();
-    expect(screen.getByText("完成主舞台应援")).toBeInTheDocument();
+    expect(screen.queryByText("完成主舞台应援")).not.toBeInTheDocument();
     expect(screen.getByText("乐园币 x5")).toBeInTheDocument();
     expect(screen.queryByText("完成彩虹补给站互动")).not.toBeInTheDocument();
     expect(screen.getByText("BW2026 周五")).toBeInTheDocument();
@@ -226,5 +231,14 @@ describe("GroupPage", () => {
     renderGroupPage();
 
     await waitFor(() => expect(screen.getByRole("button", { name: "刷新状态" })).toBeDisabled());
+  });
+
+  test("keeps task picker cards and group tabs compact with fixed item height", () => {
+    const css = readFileSync(resolve(testDir, "../../styles.css"), "utf8");
+
+    expect(css).toMatch(/\.task-picker-card\s*\{[\s\S]*height:\s*126px;/);
+    expect(css).toMatch(/\.task-picker-card\s*\{[\s\S]*overflow:\s*hidden;/);
+    expect(css).toMatch(/\.task-picker-list\s*\{[\s\S]*overflow-y:\s*auto;/);
+    expect(css).toMatch(/\.task-picker-tabs-wrap \.MuiTab-root\s*\{[\s\S]*padding:\s*0 6px !important;/);
   });
 });

@@ -554,7 +554,7 @@ export function GroupPage() {
                 "& .MuiTab-root": {
                   minHeight: 36,
                   mr: 1,
-                  px: 1,
+                  px: 0.75,
                   borderRadius: "999px",
                   bgcolor: "action.hover",
                   color: "text.secondary",
@@ -601,9 +601,6 @@ export function GroupPage() {
                     <Box sx={{ minWidth: 0 }}>
                       <Typography className="task-picker-card-name">
                         {task.name}
-                      </Typography>
-                      <Typography className="task-picker-card-title-text">
-                        {task.title || task.name}
                       </Typography>
                     </Box>
                     <Chip

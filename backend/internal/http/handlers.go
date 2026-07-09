@@ -729,12 +729,12 @@ func (h Handler) taskImage(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "task_image_not_found", "")
 		return
 	}
-	upstreamURL, err := url.Parse(task.ImageURL)
-	if err != nil || (upstreamURL.Scheme != "http" && upstreamURL.Scheme != "https") {
+	imageURL, ok := normalizeTaskImageURL(task.ImageURL)
+	if !ok {
 		writeBusinessError(w, "task_image_not_found", "")
 		return
 	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, upstreamURL.String(), nil)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, imageURL, nil)
 	if err != nil {
 		writeBusinessError(w, "task_image_load_failed", err.Error())
 		return
@@ -761,6 +761,18 @@ func (h Handler) taskImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, io.LimitReader(resp.Body, 4<<20))
+}
+
+func normalizeTaskImageURL(rawURL string) (string, bool) {
+	value := strings.TrimSpace(rawURL)
+	if strings.HasPrefix(value, "//") {
+		value = "https:" + value
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", false
+	}
+	return parsed.String(), true
 }
 
 func (h Handler) completeTask(w http.ResponseWriter, r *http.Request) {

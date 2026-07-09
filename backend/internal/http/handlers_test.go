@@ -486,6 +486,16 @@ func TestTaskImageProxyRequiresLoginAndUsesTaskImageURL(t *testing.T) {
 	}
 }
 
+func TestNormalizeTaskImageURLSupportsProtocolRelativeURL(t *testing.T) {
+	got, ok := normalizeTaskImageURL("//i0.hdslb.com/bfs/activity/task.png")
+	if !ok {
+		t.Fatal("expected protocol-relative image URL to be accepted")
+	}
+	if got != "https://i0.hdslb.com/bfs/activity/task.png" {
+		t.Fatalf("normalized URL = %q", got)
+	}
+}
+
 func TestGroupTaskSyncRequiresOwnerBilibiliAccount(t *testing.T) {
 	s := newTestStore(t)
 	syncer := tasksync.New(s, &httpTaskSource{tasks: []tasksync.Task{{

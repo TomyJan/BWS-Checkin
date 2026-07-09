@@ -334,7 +334,7 @@ body {
 .task-picker-tabs-wrap .MuiTab-root {
   min-height: 36px !important;
   margin-right: 8px !important;
-  padding: 0 9px !important;
+  padding: 0 6px !important;
   border-radius: 999px !important;
   color: var(--bws-task-muted) !important;
   background: var(--bws-task-chip-bg) !important;
@@ -364,6 +364,7 @@ body {
 
 .task-picker-card {
   min-width: 0;
+  height: 126px;
   display: grid !important;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: flex-start !important;
@@ -373,6 +374,7 @@ body {
   border-radius: 20px !important;
   background: var(--bws-task-paper) !important;
   color: var(--bws-task-text) !important;
+  overflow: hidden;
 }
 
 .task-picker-card:hover {
@@ -397,14 +399,6 @@ body {
   white-space: nowrap;
 }
 
-.task-picker-card-title-text {
-  margin-top: 7px !important;
-  color: var(--bws-task-text);
-  font-size: 14px !important;
-  font-weight: 850 !important;
-  line-height: 1.35 !important;
-}
-
 .task-picker-reward {
   flex: 0 0 auto;
   height: 26px !important;
@@ -414,9 +408,13 @@ body {
 }
 
 .task-picker-description {
+  display: -webkit-box;
+  overflow: hidden;
   color: var(--bws-task-muted);
   font-size: 13px !important;
   line-height: 1.45 !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .task-picker-progress {
