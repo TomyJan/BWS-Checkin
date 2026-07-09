@@ -39,4 +39,13 @@ describe("GroupDialogs", () => {
 
     await waitFor(() => expect(screen.getByText("组 ID 已存在")).toBeInTheDocument());
   });
+
+  test("uses actual BWS event dates when creating a group", () => {
+    renderWithQueryClient(<CreateGroupDialog open onClose={vi.fn()} onDone={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "7 月 10 日" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "7 月 11 日" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "7 月 12 日" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "周五" })).not.toBeInTheDocument();
+  });
 });

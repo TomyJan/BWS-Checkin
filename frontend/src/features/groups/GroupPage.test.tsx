@@ -29,11 +29,13 @@ function renderGroupPage() {
 describe("GroupPage", () => {
   let liveMode = false;
   let refreshCalls = 0;
+  let taskSyncCalls = 0;
 
   beforeEach(() => {
     vi.restoreAllMocks();
     liveMode = false;
     refreshCalls = 0;
+    taskSyncCalls = 0;
     Object.defineProperty(window.navigator, "onLine", {
       configurable: true,
       value: true
@@ -146,6 +148,10 @@ describe("GroupPage", () => {
         refreshCalls += 1;
         return Promise.resolve(Response.json({ ok: true, data: {} }));
       }
+      if (url.includes("/api/v1/group/task/sync")) {
+        taskSyncCalls += 1;
+        return Promise.resolve(Response.json({ ok: true, data: { sync: { lastSuccessAt: "2026-07-10T12:00:00Z" } } }));
+      }
       return Promise.resolve(Response.json({ ok: true, data: {} }));
     });
   });
@@ -183,6 +189,16 @@ describe("GroupPage", () => {
     expect(screen.getByText("乐园币 x5")).toBeInTheDocument();
     expect(screen.queryByText("完成彩虹补给站互动")).not.toBeInTheDocument();
     expect(screen.getByText("BW2026 周五")).toBeInTheDocument();
+  });
+
+  test("lets the owner sync BWS tasks from the management menu", async () => {
+    renderGroupPage();
+
+    await waitFor(() => expect(screen.getByText("BW2026 周五")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "互助组管理" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "同步乐园任务" }));
+
+    await waitFor(() => expect(taskSyncCalls).toBe(1));
   });
 
   test("shows refresh action for Live status and disables it offline", async () => {

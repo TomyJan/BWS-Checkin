@@ -27,6 +27,9 @@ import { UserLayout } from "../../layouts/UserLayout";
 import { CreateGroupDialog, JoinGroupDialog } from "../groups/GroupDialogs";
 
 const dayLabel: Record<string, string> = {
+  "20260710": "7 月 10 日",
+  "20260711": "7 月 11 日",
+  "20260712": "7 月 12 日",
   friday: "周五",
   saturday: "周六",
   sunday: "周日"

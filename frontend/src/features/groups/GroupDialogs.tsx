@@ -18,9 +18,15 @@ import type { Group } from "../../api/types";
 export interface CreateGroupValues {
   id: string;
   name: string;
-  day: "friday" | "saturday" | "sunday";
+  day: "20260710" | "20260711" | "20260712" | "friday" | "saturday" | "sunday";
   description: string;
 }
+
+const eventDays = [
+  { value: "20260710", label: "7 月 10 日" },
+  { value: "20260711", label: "7 月 11 日" },
+  { value: "20260712", label: "7 月 12 日" }
+] as const;
 
 interface DialogProps {
   open: boolean;
@@ -33,7 +39,7 @@ export function CreateGroupDialog({ open, onClose, onDone }: DialogProps) {
   const [values, setValues] = useState<CreateGroupValues>({
     id: "",
     name: "",
-    day: "friday",
+    day: "20260711",
     description: ""
   });
 
@@ -63,13 +69,13 @@ export function CreateGroupDialog({ open, onClose, onDone }: DialogProps) {
             fullWidth
             color="primary"
             value={values.day}
-            onChange={(_, day) => {
+            onChange={(_, day: CreateGroupValues["day"] | null) => {
               if (day) setValues({ ...values, day });
             }}
           >
-            <ToggleButton value="friday">周五</ToggleButton>
-            <ToggleButton value="saturday">周六</ToggleButton>
-            <ToggleButton value="sunday">周日</ToggleButton>
+            {eventDays.map((day) => (
+              <ToggleButton key={day.value} value={day.value}>{day.label}</ToggleButton>
+            ))}
           </ToggleButtonGroup>
           <TextField
             multiline
@@ -99,7 +105,7 @@ export function EditGroupDialog({ open, onClose, onDone, group }: EditGroupDialo
   const [values, setValues] = useState<CreateGroupValues>({
     id: "",
     name: "",
-    day: "friday",
+    day: "20260711",
     description: ""
   });
 
@@ -147,13 +153,13 @@ export function EditGroupDialog({ open, onClose, onDone, group }: EditGroupDialo
             fullWidth
             color="primary"
             value={values.day}
-            onChange={(_, day) => {
+            onChange={(_, day: CreateGroupValues["day"] | null) => {
               if (day) setValues({ ...values, day });
             }}
           >
-            <ToggleButton value="friday">周五</ToggleButton>
-            <ToggleButton value="saturday">周六</ToggleButton>
-            <ToggleButton value="sunday">周日</ToggleButton>
+            {eventDays.map((day) => (
+              <ToggleButton key={day.value} value={day.value}>{day.label}</ToggleButton>
+            ))}
           </ToggleButtonGroup>
           <TextField
             multiline

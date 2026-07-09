@@ -37,7 +37,7 @@ export interface BilibiliLoginPollResponse {
 export interface Group {
   id: string;
   name: string;
-  day: "friday" | "saturday" | "sunday";
+  day: "20260710" | "20260711" | "20260712" | "friday" | "saturday" | "sunday";
   description: string;
   role: "owner" | "member";
   memberCount: number;

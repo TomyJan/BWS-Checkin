@@ -51,6 +51,7 @@ import {
   NavigateNextIcon,
   PersonRemoveIcon,
   StageIcon,
+  SyncIcon,
   VenueIcon
 } from "../../icons";
 import { EditGroupDialog } from "./GroupDialogs";
@@ -212,6 +213,24 @@ export function GroupPage() {
         queryClient.invalidateQueries({ queryKey: ["groups"] }),
         queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] })
       ]);
+    }
+  });
+
+  const syncTasks = useMutation({
+    mutationFn: async () => {
+      await api("/group/task/sync", {
+        method: "POST",
+        body: JSON.stringify({ groupId })
+      });
+    },
+    onSuccess: async () => {
+      setManageAnchor(null);
+      setCopyMessage("乐园任务已同步");
+      await tasksQuery.refetch();
+    },
+    onError: (error) => {
+      setManageAnchor(null);
+      setCopyMessage(error instanceof Error ? error.message : "乐园任务同步失败");
     }
   });
 
@@ -407,7 +426,7 @@ export function GroupPage() {
             {(!isOnline || offlineSnapshot) && <Chip label="离线模式" color="warning" size="small" />}
             {isArchived && <Chip label="已归档" color="default" size="small" />}
             {isOwner && (
-              <IconButton color="inherit" onClick={(event) => setManageAnchor(event.currentTarget)}>
+              <IconButton aria-label="互助组管理" color="inherit" onClick={(event) => setManageAnchor(event.currentTarget)}>
                 <MoreVertIcon />
               </IconButton>
             )}
@@ -635,6 +654,12 @@ export function GroupPage() {
             <ContentCopyIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>复制邀请链接</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => syncTasks.mutate()} disabled={isArchived || syncTasks.isPending}>
+          <ListItemIcon>
+            <SyncIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>同步乐园任务</ListItemText>
         </MenuItem>
         <MenuItem onClick={confirmArchive} disabled={isArchived || archiveGroup.isPending}>
           <ListItemIcon>

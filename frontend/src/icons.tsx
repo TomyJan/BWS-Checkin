@@ -152,6 +152,14 @@ export function StageIcon(props: SvgIconProps) {
   );
 }
 
+export function SyncIcon(props: SvgIconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5 0 .86-.22 1.67-.6 2.38l1.46 1.46A6.94 6.94 0 0 0 19 13c0-3.86-3.14-7-7-7zm-5 7c0-.86.22-1.67.6-2.38L6.14 9.16A6.94 6.94 0 0 0 5 13c0 3.86 3.14 7 7 7v3l4-4-4-4v3c-2.76 0-5-2.24-5-5z" />
+    </SvgIcon>
+  );
+}
+
 export function VenueIcon(props: SvgIconProps) {
   return (
     <SvgIcon {...props}>
