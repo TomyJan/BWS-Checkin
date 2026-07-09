@@ -1180,6 +1180,25 @@ func TestQRUploadRejectsInvalidImageContent(t *testing.T) {
 	assertBusinessError(t, w, "invalid_image")
 }
 
+func TestBusinessErrorMessageSanitizesDatabaseDetails(t *testing.T) {
+	databaseErrors := []string{
+		"constraint failed: CHECK constraint failed: day IN ('friday', 'saturday', 'sunday') (275)",
+		"UNIQUE constraint failed: groups.id",
+		"SQL logic error: table tasks has no column named group_name (1)",
+		"database is locked",
+	}
+	for _, fallback := range databaseErrors {
+		got := businessErrorMessage("group_update_failed", fallback)
+		if got != "操作失败，请稍后重试" {
+			t.Fatalf("businessErrorMessage(%q) = %q, want generic message", fallback, got)
+		}
+		lower := strings.ToLower(got)
+		if strings.Contains(lower, "constraint") || strings.Contains(lower, "sql") || strings.Contains(lower, "database") || strings.Contains(lower, "table") {
+			t.Fatalf("sanitized message still leaks database detail: %q", got)
+		}
+	}
+}
+
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
 	s, err := store.OpenMemory()

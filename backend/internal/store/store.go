@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"bws-checkin/backend/internal/domain"
@@ -204,6 +205,9 @@ func (s *Store) migrate() error {
 	if err := s.ensureColumn("groups", "archived_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := s.ensureGroupDayConstraint(); err != nil {
+		return err
+	}
 	if _, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS bilibili_accounts (
 			user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -329,6 +333,91 @@ func (s *Store) ensureColumn(table string, name string, definition string) error
 	}
 	_, err = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + name + ` ` + definition)
 	return err
+}
+
+func (s *Store) ensureGroupDayConstraint() error {
+	ctx := context.Background()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	var tableSQL string
+	if err := conn.QueryRowContext(ctx, `
+		SELECT sql
+		FROM sqlite_master
+		WHERE type = 'table' AND name = 'groups'
+	`).Scan(&tableSQL); err != nil {
+		return err
+	}
+	if strings.Contains(tableSQL, "'20260710'") &&
+		strings.Contains(tableSQL, "'20260711'") &&
+		strings.Contains(tableSQL, "'20260712'") {
+		return nil
+	}
+	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		return err
+	}
+	defer func() { _, _ = conn.ExecContext(ctx, `PRAGMA foreign_keys = ON`) }()
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`
+		CREATE TABLE groups_new (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			day TEXT NOT NULL CHECK (day IN ('20260710', '20260711', '20260712', 'friday', 'saturday', 'sunday')),
+			description TEXT NOT NULL DEFAULT '',
+			owner_user_id TEXT NOT NULL REFERENCES users(id),
+			join_locked INTEGER NOT NULL DEFAULT 0,
+			archived_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO groups_new (
+			id, name, day, description, owner_user_id, join_locked, archived_at, created_at, updated_at
+		)
+		SELECT id, name, day, description, owner_user_id, join_locked, archived_at, created_at, updated_at
+		FROM groups
+	`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE groups`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE groups_new RENAME TO groups`); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	rows, err := conn.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var table string
+		var rowID int64
+		var parent string
+		var fkID int
+		if err := rows.Scan(&table, &rowID, &parent, &fkID); err != nil {
+			return err
+		}
+		return fmt.Errorf("foreign key violation after groups migration: table=%s rowid=%d parent=%s fkid=%d", table, rowID, parent, fkID)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Store) UpsertUser(ctx context.Context, subject, displayName string) (domain.User, error) {

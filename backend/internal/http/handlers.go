@@ -973,10 +973,32 @@ func businessErrorMessage(code string, fallback string) string {
 	if message, ok := messages[code]; ok {
 		return message
 	}
-	if fallback == "" || strings.Contains(fallback, "sql:") {
+	if fallback == "" || looksLikeDatabaseError(fallback) {
 		return "操作失败，请稍后重试"
 	}
 	return fallback
+}
+
+func looksLikeDatabaseError(message string) bool {
+	lower := strings.ToLower(message)
+	patterns := []string{
+		"sql:",
+		"sql logic error",
+		"constraint failed",
+		"unique constraint",
+		"foreign key constraint",
+		"check constraint",
+		"database is locked",
+		"no such table",
+		"no column named",
+		"rows in result set",
+	}
+	for _, pattern := range patterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 type groupIDRequest struct {
