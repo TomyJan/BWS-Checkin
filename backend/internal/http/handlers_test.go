@@ -2,6 +2,11 @@ package httpapi
 
 import (
 	"bytes"
+	"crypto"
+	cryptorand "crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -15,6 +20,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"bws-checkin/backend/internal/store"
 )
@@ -159,6 +165,42 @@ func TestOIDCCallbackRejectsInvalidState(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("callback status = %d, want 400", w.Code)
+	}
+}
+
+func TestOIDCCallbackRejectsInvalidIDTokenIssuer(t *testing.T) {
+	s := newTestStore(t)
+	issuer := newOIDCTestProviderWithIDTokenIssuer(t, "https://wrong-issuer.example")
+	h := NewRouter(Deps{
+		Store: s,
+		OIDC: OIDCConfig{
+			IssuerURL:         issuer.URL,
+			ClientID:          "bws-client",
+			ClientSecret:      "bws-secret",
+			RedirectURL:       "http://app.test/auth/oidc/callback",
+			PostLoginRedirect: "http://app.test/",
+		},
+	})
+
+	login := httptest.NewRequest(http.MethodGet, "/auth/oidc/login", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, login)
+	if w.Code != http.StatusFound {
+		t.Fatalf("login status = %d, body = %s", w.Code, w.Body.String())
+	}
+	authURL, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse auth redirect: %v", err)
+	}
+
+	callback := httptest.NewRequest(http.MethodGet, "/auth/oidc/callback?code=auth-code&state="+url.QueryEscape(authURL.Query().Get("state")), nil)
+	for _, c := range w.Result().Cookies() {
+		callback.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, callback)
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("callback status = %d, want 502", w.Code)
 	}
 }
 
@@ -820,7 +862,15 @@ func validJPEG(t *testing.T) []byte {
 }
 
 func newOIDCTestProvider(t *testing.T) *httptest.Server {
+	return newOIDCTestProviderWithIDTokenIssuer(t, "")
+}
+
+func newOIDCTestProviderWithIDTokenIssuer(t *testing.T, idTokenIssuer string) *httptest.Server {
 	t.Helper()
+	key, err := rsa.GenerateKey(cryptorand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA key: %v", err)
+	}
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -829,6 +879,20 @@ func newOIDCTestProvider(t *testing.T) *httptest.Server {
 				"authorization_endpoint": server.URL + "/authorize",
 				"token_endpoint":         server.URL + "/token",
 				"userinfo_endpoint":      server.URL + "/userinfo",
+				"jwks_uri":               server.URL + "/jwks",
+			})
+		case "/jwks":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"keys": []map[string]string{
+					{
+						"kty": "RSA",
+						"use": "sig",
+						"kid": "test-key",
+						"alg": "RS256",
+						"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+						"e":   base64.RawURLEncoding.EncodeToString(bigEndianBytes(key.E)),
+					},
+				},
 			})
 		case "/token":
 			if err := r.ParseForm(); err != nil {
@@ -837,8 +901,13 @@ func newOIDCTestProvider(t *testing.T) *httptest.Server {
 			if r.Form.Get("code") != "auth-code" {
 				t.Fatalf("token code = %q", r.Form.Get("code"))
 			}
+			issuer := idTokenIssuer
+			if issuer == "" {
+				issuer = server.URL
+			}
 			writeJSON(w, http.StatusOK, map[string]any{
 				"access_token": "access-token",
+				"id_token":     signedIDToken(t, key, issuer, "bws-client", "oidc-user-1"),
 				"token_type":   "Bearer",
 			})
 		case "/userinfo":
@@ -856,4 +925,43 @@ func newOIDCTestProvider(t *testing.T) *httptest.Server {
 	}))
 	t.Cleanup(server.Close)
 	return server
+}
+
+func signedIDToken(t *testing.T, key *rsa.PrivateKey, issuer string, audience string, subject string) string {
+	t.Helper()
+	header := map[string]string{"alg": "RS256", "typ": "JWT", "kid": "test-key"}
+	claims := map[string]any{
+		"iss": issuer,
+		"aud": audience,
+		"sub": subject,
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"iat": time.Now().Add(-time.Minute).Unix(),
+	}
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		t.Fatalf("marshal id token header: %v", err)
+	}
+	claimsJSON, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("marshal id token claims: %v", err)
+	}
+	signingInput := base64.RawURLEncoding.EncodeToString(headerJSON) + "." + base64.RawURLEncoding.EncodeToString(claimsJSON)
+	sum := sha256.Sum256([]byte(signingInput))
+	signature, err := rsa.SignPKCS1v15(cryptorand.Reader, key, crypto.SHA256, sum[:])
+	if err != nil {
+		t.Fatalf("sign id token: %v", err)
+	}
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
+}
+
+func bigEndianBytes(value int) []byte {
+	if value == 0 {
+		return []byte{0}
+	}
+	var out []byte
+	for value > 0 {
+		out = append([]byte{byte(value & 0xff)}, out...)
+		value >>= 8
+	}
+	return out
 }
