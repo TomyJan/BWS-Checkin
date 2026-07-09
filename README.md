@@ -76,6 +76,7 @@ Release 工作流会自动执行上述流程，并发布 Linux x64 与 Windows x
 - 生产环境关闭开发登录：`BWS_DEV_AUTH=0`。
 - 生产环境配置完整的 OIDC：`BWS_PUBLIC_BASE`、`BWS_OIDC_ISSUER`、`BWS_OIDC_CLIENT_ID`、`BWS_OIDC_CLIENT_SECRET`。
 - 生产环境设置 `BWS_SESSION_SECRET`，并在 HTTPS 部署时设置 `BWS_COOKIE_SECURE=1`。
+- 如启用 B 站账号绑定，设置 `BWS_BILIBILI_COOKIE_SECRET`，用于加密保存 B 站 Cookie。
 - 备份策略同时覆盖 `BWS_DB` 和 `BWS_UPLOAD_DIR`。
 
 ## 路由约定
@@ -97,6 +98,35 @@ GET /api/v1/user/qr?userId=<uuid>
 该接口根据用户 ID 查找二维码文件，调用方必须已登录。二维码图片文件仍保存在 `BWS_UPLOAD_DIR`，但不再通过 `/uploads/*` 对外提供静态访问。
 
 任务接口会返回点位展示元数据，包括任务分组、点位名称、标题、奖励乐园币数量和描述。前端「选择点位」弹窗按任务分组展示这些信息。
+
+## B 站账号与真实数据
+
+个人中心支持两种二维码来源：
+
+- **手动上传：** 用户上传自己的 BWS 二维码图片，不需要绑定 B 站账号。
+- **B 站账号生成：** 用户通过 B 站扫码登录绑定账号，后端保存加密后的 Cookie，并用绑定账号的 `mid` 生成 BWS 二维码。
+
+后端不会把 B 站 Cookie 返回给前端。生产环境启用绑定功能时必须设置：
+
+```powershell
+$env:BWS_BILIBILI_LOGIN_ENABLED = "1"
+$env:BWS_BILIBILI_COOKIE_SECRET = "replace-with-long-random-secret"
+```
+
+可选调试配置：
+
+- `BWS_BILIBILI_LOGIN_ENABLED`：设为 `0` 可关闭 B 站扫码登录和任务同步，默认 `1`。
+- `BWS_BILIBILI_PASSPORT_BASE`：覆盖 B 站 Passport 基础地址，主要用于测试。
+- `BWS_BILIBILI_API_BASE`：覆盖 B 站 API 基础地址，主要用于测试。
+
+任务列表会从 BWS 接口同步。同步策略如下：
+
+- 服务启动后立即同步一次。
+- 后台每 5 分钟同步一次。
+- 用户进入互助组详情页时，如果本地任务快照超过 5 分钟未成功刷新，会异步触发同步；接口仍优先返回本地最后一次成功数据。
+- `POST /api/v1/task/sync` 可手动触发同步，`GET /api/v1/task/sync/status` 可查看最近同步状态。
+
+打卡状态分为手动状态和 Live 状态。手动状态可以在前端标记完成或撤销完成；Live 状态来自 BWS 接口，前端只显示「刷新状态」按钮，离线时禁用。刷新失败不会把已有 Live 状态降级为手动状态。
 
 ## 开发登录
 
@@ -128,6 +158,7 @@ $env:BWS_COOKIE_SAMESITE = "lax"
 - `BWS_COOKIE_SECURE`：设为 `1` 时只通过 HTTPS 发送 Cookie。
 - `BWS_COOKIE_SAMESITE`：支持 `lax`、`strict`、`none`，默认 `lax`。
 - `BWS_SESSION_MAX_AGE`：Session Cookie 有效期，单位：秒，默认 30 天。
+- `BWS_BILIBILI_COOKIE_SECRET`：B 站 Cookie 加密密钥。生产环境启用 B 站登录时必须设置。
 
 ### 密钥轮换
 
@@ -164,5 +195,7 @@ $env:BWS_COOKIE_SAMESITE = "lax"
 
 ## 离线使用
 
-前端支持 PWA。进入互助组详情页时，会缓存组信息、任务状态、成员信息和二维码图片本体；断网后可继续查看该互助组并标记打卡状态。离线产生的打卡状态会写入本地队列，恢复网络后自动同步，服务端按更新时间较新的状态为准。
+前端支持 PWA。进入互助组详情页时，会缓存组信息、任务状态、成员信息和二维码图片本体；断网后可继续查看该互助组并标记手动打卡状态。离线产生的手动打卡状态会写入本地队列，恢复网络后自动同步，服务端按更新时间较新的状态为准。
+
+Live 状态离线时只读，不进入离线队列；恢复网络后可以通过「刷新状态」重新向服务端查询。
 
