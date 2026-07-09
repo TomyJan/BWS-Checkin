@@ -20,6 +20,9 @@ func TestBWSURLIsStableAndDecryptable(t *testing.T) {
 	if !strings.HasPrefix(got, "https://www.bilibili.com/blackboard/era/bws2026-live.html?key=") {
 		t.Fatalf("url = %q, want BWS live page with key query", got)
 	}
+	if !strings.HasSuffix(got, "#/map") {
+		t.Fatalf("url = %q, want BWS map hash route", got)
+	}
 
 	again, err := qrcode.BWSURL("123456")
 	if err != nil {
@@ -35,6 +38,9 @@ func TestBWSURLIsStableAndDecryptable(t *testing.T) {
 	}
 	if decrypted := decryptBWSKey(t, parsed.Query().Get("key")); decrypted != "123456" {
 		t.Fatalf("decrypted key = %q, want 123456", decrypted)
+	}
+	if parsed.Fragment != "/map" {
+		t.Fatalf("fragment = %q, want /map", parsed.Fragment)
 	}
 }
 

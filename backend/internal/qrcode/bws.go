@@ -26,7 +26,7 @@ func BWSURL(mid string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return bwsLivePage + "?key=" + url.QueryEscape(encrypted), nil
+	return bwsLivePage + "?key=" + url.QueryEscape(encrypted) + "#/map", nil
 }
 
 func BWSPNG(mid string) ([]byte, error) {
