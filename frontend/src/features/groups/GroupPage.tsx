@@ -6,6 +6,7 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  Alert,
   IconButton,
   LinearProgress,
   List,
@@ -500,7 +501,7 @@ export function GroupPage() {
               <Button
                 fullWidth
                 variant="contained"
-                startIcon={<CheckIcon />}
+                startIcon={<SyncIcon />}
                 disabled={!currentMember || refreshStatus.isPending || isArchived || !isOnline || offlineSnapshot || !currentMemberCanRefresh}
                 onClick={() => currentMember && refreshStatus.mutate(currentMember)}
               >
@@ -540,7 +541,7 @@ export function GroupPage() {
             <CloseIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ px: 0, pt: 0, pb: 2 }}>
+        <DialogContent className="task-picker-content" sx={{ px: 0, pt: 0, pb: 0 }}>
           <Box className="task-picker-tabs-wrap">
             <Tabs
               value={selectedTaskGroupName}
@@ -553,7 +554,7 @@ export function GroupPage() {
                 "& .MuiTab-root": {
                   minHeight: 36,
                   mr: 1,
-                  px: 1.75,
+                  px: 1,
                   borderRadius: "999px",
                   bgcolor: "action.hover",
                   color: "text.secondary",
@@ -677,7 +678,11 @@ export function GroupPage() {
           void queryClient.invalidateQueries({ queryKey: ["groups"] });
         }}
       />
-      <Snackbar open={Boolean(copyMessage)} autoHideDuration={1800} message={copyMessage} onClose={() => setCopyMessage("")} />
+      <Snackbar open={Boolean(copyMessage)} autoHideDuration={1800} onClose={() => setCopyMessage("")}>
+        <Alert className="app-snackbar-alert" severity="success" variant="filled" onClose={() => setCopyMessage("")}>
+          {copyMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
@@ -727,7 +732,12 @@ function taskIconKind(task?: TaskStatus) {
   return "venue";
 }
 
+function taskImageURL(task: TaskStatus) {
+  return `/api/v1/task/image?taskId=${encodeURIComponent(task.id)}`;
+}
+
 function TaskIconBadge({ task, testId }: { task?: TaskStatus; testId: string }) {
+  const [imageFailed, setImageFailed] = useState(false);
   const kind = taskIconKind(task);
   const config = {
     venue: { Icon: VenueIcon },
@@ -735,6 +745,13 @@ function TaskIconBadge({ task, testId }: { task?: TaskStatus; testId: string }) 
     interaction: { Icon: InteractionIcon }
   }[kind];
   const Icon = config.Icon;
+  if (task?.imageUrl && !imageFailed) {
+    return (
+      <Box data-testid={testId} className="task-icon-badge task-icon-image">
+        <img src={taskImageURL(task)} alt={`${task.name} 图标`} onError={() => setImageFailed(true)} />
+      </Box>
+    );
+  }
   return (
     <Box data-testid={testId} className={`task-icon-badge task-icon-${kind}`}>
       <Icon sx={{ fontSize: 25 }} />

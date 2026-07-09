@@ -80,11 +80,17 @@ export interface MemberCompletion {
 
 export interface TaskStatus {
   id: string;
+  externalId?: string;
   groupName: string;
   name: string;
   title: string;
   rewardCoins: number;
   description: string;
+  imageUrl?: string;
+  venueId?: string;
+  venueName?: string;
+  eventDay?: string;
+  syncSource?: string;
   sortOrder: number;
   completedCount: number;
   totalCount: number;

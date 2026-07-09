@@ -237,6 +237,19 @@ body {
   border-radius: 16px;
 }
 
+.task-icon-image {
+  overflow: hidden;
+  border: 1px solid var(--bws-task-border);
+  background: transparent;
+}
+
+.task-icon-image img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
 .task-icon-venue {
   color: var(--bws-task-icon-text);
   background: var(--bws-task-icon-bg);
@@ -268,6 +281,10 @@ body {
 .task-picker-paper {
   width: 560px !important;
   max-width: calc(100% - 64px) !important;
+  height: min(720px, calc(100vh - 48px)) !important;
+  max-height: calc(100vh - 48px) !important;
+  display: flex !important;
+  flex-direction: column !important;
   margin: 16px auto !important;
   overflow: hidden !important;
   border-radius: 26px !important;
@@ -289,6 +306,14 @@ body {
   letter-spacing: 0 !important;
 }
 
+.task-picker-content {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .task-picker-title .MuiIconButton-root {
   color: var(--bws-task-muted);
   background: var(--bws-task-chip-bg);
@@ -297,12 +322,19 @@ body {
 .task-picker-tabs-wrap {
   padding: 0 16px 12px;
   border-bottom: 1px solid var(--bws-task-border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.task-picker-tabs-wrap::-webkit-scrollbar {
+  display: none;
 }
 
 .task-picker-tabs-wrap .MuiTab-root {
   min-height: 36px !important;
   margin-right: 8px !important;
-  padding: 0 13px !important;
+  padding: 0 9px !important;
   border-radius: 999px !important;
   color: var(--bws-task-muted) !important;
   background: var(--bws-task-chip-bg) !important;
@@ -323,8 +355,11 @@ body {
 
 .task-picker-list {
   display: grid !important;
+  min-height: 0;
+  flex: 1 1 auto;
   gap: 10px;
   padding: 14px 16px 16px !important;
+  overflow-y: auto;
 }
 
 .task-picker-card {
@@ -401,6 +436,12 @@ body {
   font-weight: 900 !important;
 }
 
+.app-snackbar-alert {
+  color: var(--bws-task-accent-text) !important;
+  background: var(--bws-task-accent) !important;
+  font-weight: 850 !important;
+}
+
 .member-grid {
   min-width: 0;
   display: grid;
@@ -475,6 +516,13 @@ body {
 
   .task-sheet {
     max-width: calc(100% - 48px);
+  }
+
+  .task-picker-paper {
+    max-width: calc(100% - 24px) !important;
+    height: min(680px, calc(100vh - 24px)) !important;
+    max-height: calc(100vh - 24px) !important;
+    margin: 12px auto !important;
   }
 
   .task-trigger {

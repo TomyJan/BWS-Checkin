@@ -102,6 +102,7 @@ describe("GroupPage", () => {
                   title: "完成彩虹补给站互动",
                   rewardCoins: 3,
                   description: "在彩虹补给站完成互动并出示二维码。",
+                  imageUrl: "https://i0.hdslb.com/bfs/activity/rainbow.png",
                   sortOrder: 1,
                   completedCount: 0,
                   totalCount: 1,
@@ -119,6 +120,7 @@ describe("GroupPage", () => {
                   title: "完成主舞台应援",
                   rewardCoins: 5,
                   description: "在主舞台完成应援任务并领取奖励。",
+                  imageUrl: "https://i0.hdslb.com/bfs/activity/stage.png",
                   sortOrder: 2,
                   completedCount: 0,
                   totalCount: 1,
@@ -167,7 +169,10 @@ describe("GroupPage", () => {
     await waitFor(() => expect(screen.getByText("BW2026 周五")).toBeInTheDocument());
     expect(screen.queryByText(/正在查看/)).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Alice 的二维码" })).toHaveAttribute("src", "/api/v1/user/qr?userId=u1");
-    expect(screen.getByTestId("current-task-icon")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "彩虹补给站 图标" })).toHaveAttribute(
+      "src",
+      "/api/v1/task/image?taskId=t1"
+    );
     expect(screen.getByRole("button", { name: "切换点位：彩虹补给站" })).toBeInTheDocument();
     expect(screen.getByText("场馆打卡 · 乐园币 x3")).toBeInTheDocument();
     expect(screen.queryByText(/点击切换点位/)).not.toBeInTheDocument();
@@ -177,7 +182,7 @@ describe("GroupPage", () => {
     expect(screen.getByRole("tablist", { name: "点位分组" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "场馆打卡" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "舞台任务" })).toBeInTheDocument();
-    expect(screen.getByTestId("task-icon-t1")).toBeInTheDocument();
+    expect(screen.getByTestId("task-icon-t1").querySelector("img")).toHaveAttribute("src", "/api/v1/task/image?taskId=t1");
     expect(screen.getByText("完成彩虹补给站互动")).toBeInTheDocument();
     expect(screen.getByText("乐园币 x3")).toBeInTheDocument();
     expect(screen.getByText("在彩虹补给站完成互动并出示二维码。")).toBeInTheDocument();
@@ -199,6 +204,7 @@ describe("GroupPage", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "同步乐园任务" }));
 
     await waitFor(() => expect(taskSyncCalls).toBe(1));
+    expect(await screen.findByRole("alert")).toHaveTextContent("乐园任务已同步");
   });
 
   test("shows refresh action for Live status and disables it offline", async () => {
