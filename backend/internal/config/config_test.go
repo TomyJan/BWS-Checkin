@@ -16,6 +16,42 @@ func TestLoadOAuthProvidersFromJSON(t *testing.T) {
 	}
 }
 
+func TestValidateProductionQQAndCasdoorProviders(t *testing.T) {
+	cfg := Config{
+		DevAuth:              false,
+		PublicBase:           "https://bws.example.com",
+		SessionSecret:        "session-secret-for-test",
+		BilibiliLoginEnabled: true,
+		BilibiliCookieSecret: "bilibili-cookie-secret-for-test",
+		OAuthProviders: []OAuthProviderConfig{
+			{
+				ID:           "qq",
+				Name:         "QQ登录",
+				Type:         "qq",
+				AuthURL:      "https://graph.qq.com/oauth2.0/authorize",
+				TokenURL:     "https://graph.qq.com/oauth2.0/token",
+				UserInfoURL:  "https://graph.qq.com/user/get_user_info",
+				ClientID:     "qq-client-id",
+				ClientSecret: "qq-client-secret",
+				RedirectURL:  "https://bws.example.com/api/v1/auth/oauth/qq/callback",
+			},
+			{
+				ID:           "casdoor",
+				Name:         "AMOE认证",
+				Type:         "oidc",
+				IssuerURL:    "https://auth.amoe.cc",
+				ClientID:     "casdoor-client-id",
+				ClientSecret: "casdoor-client-secret",
+				RedirectURL:  "https://bws.example.com/api/v1/auth/oauth/casdoor/callback",
+			},
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() with QQ and Casdoor providers: %v", err)
+	}
+}
+
 func TestLoadUsesDevelopmentBilibiliCookieSecretFallback(t *testing.T) {
 	t.Setenv("BWS_DEV_AUTH", "1")
 	t.Setenv("BWS_BILIBILI_COOKIE_SECRET", "")

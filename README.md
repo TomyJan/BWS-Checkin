@@ -143,6 +143,12 @@ $env:BWS_BILIBILI_COOKIE_SECRET = "replace-with-long-random-secret"
 
 生产环境关闭 mock 登录后，后端通过已配置的 OAuth provider 登录。前端会通过 `GET /api/v1/oauth/providers` 获取可用渠道，并跳转到 `/api/v1/auth/oauth/<providerId>/login`。
 
+线上配置模板见 `deploy/production.env.example`。该模板同时启用 QQ OAuth 和 Casdoor OIDC：
+
+- QQ 回调地址：`https://bws.example.com/api/v1/auth/oauth/qq/callback`
+- Casdoor issuer：`https://auth.amoe.cc`
+- Casdoor 回调地址：`https://bws.example.com/api/v1/auth/oauth/casdoor/callback`
+
 通用配置使用 `BWS_OAUTH_PROVIDERS`，内容是 JSON 数组。字段如下：
 
 - `id`：渠道 ID，用于 URL，例如 `qq`。
