@@ -67,6 +67,17 @@ go build -o ../dist/bws-checkin.exe ./cmd/server
 
 Release 工作流会自动执行上述流程，并发布 Linux x64 与 Windows x64 二进制。
 
+### 发布前核对
+
+发布当前 MVP 前，至少确认以下事项：
+
+- 后端验证通过：`go test ./...`、`go vet ./...`，并确保 `gofmt -l .` 无输出。
+- 前端验证通过：`pnpm test`、`pnpm build`。
+- 生产环境关闭开发登录：`BWS_DEV_AUTH=0`。
+- 生产环境配置完整的 OIDC：`BWS_PUBLIC_BASE`、`BWS_OIDC_ISSUER`、`BWS_OIDC_CLIENT_ID`、`BWS_OIDC_CLIENT_SECRET`。
+- 生产环境设置 `BWS_SESSION_SECRET`，并在 HTTPS 部署时设置 `BWS_COOKIE_SECURE=1`。
+- 备份策略同时覆盖 `BWS_DB` 和 `BWS_UPLOAD_DIR`。
+
 ## 路由约定
 
 后端负责处理以下路径：
