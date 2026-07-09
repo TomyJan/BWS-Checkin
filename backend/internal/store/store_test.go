@@ -3,7 +3,6 @@ package store
 import (
 	"database/sql"
 	"errors"
-	"path/filepath"
 	"regexp"
 	"testing"
 	"time"
@@ -191,69 +190,6 @@ func TestDefaultTasksUsePersistedBilibiliDataForAllEventDays(t *testing.T) {
 		if first.Name != "才浅战国水晶杯共创" || first.ImageURL == "" || first.RewardCoins != 2 {
 			t.Fatalf("%s first task metadata = %+v", tt.day, first)
 		}
-	}
-}
-
-func TestMigrateLegacyGroupDayConstraintAllowsEventDates(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "legacy.db")
-	db, err := sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)")
-	if err != nil {
-		t.Fatalf("open legacy db: %v", err)
-	}
-	_, err = db.Exec(`
-		CREATE TABLE users (
-			id TEXT PRIMARY KEY,
-			oidc_subject TEXT NOT NULL UNIQUE,
-			display_name TEXT NOT NULL,
-			avatar_url TEXT NOT NULL DEFAULT '',
-			qr_image_path TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		);
-		CREATE TABLE groups (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			day TEXT NOT NULL CHECK (day IN ('friday', 'saturday', 'sunday')),
-			description TEXT NOT NULL DEFAULT '',
-			owner_user_id TEXT NOT NULL REFERENCES users(id),
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		);
-		CREATE TABLE group_members (
-			group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			role TEXT NOT NULL CHECK (role IN ('owner', 'member')),
-			joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (group_id, user_id)
-		);
-		INSERT INTO users (id, oidc_subject, display_name) VALUES ('owner-id', 'oidc-owner', 'Owner');
-		INSERT INTO groups (id, name, day, owner_user_id) VALUES ('bw2026', 'BW2026', 'friday', 'owner-id');
-		INSERT INTO group_members (group_id, user_id, role) VALUES ('bw2026', 'owner-id', 'owner');
-	`)
-	if err != nil {
-		t.Fatalf("seed legacy db: %v", err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatalf("close legacy db: %v", err)
-	}
-
-	s, err := Open(dbPath)
-	if err != nil {
-		t.Fatalf("open migrated store: %v", err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-
-	if err := s.UpdateGroup(t.Context(), UpdateGroupInput{
-		ID: "bw2026", Name: "BW2026 7 月 11 日", Day: "20260711", Description: "day2",
-	}); err != nil {
-		t.Fatalf("update group to event date after migration: %v", err)
-	}
-	group, err := s.GroupByID(t.Context(), "bw2026", "owner-id")
-	if err != nil {
-		t.Fatalf("load migrated group: %v", err)
-	}
-	if group.Day != "20260711" {
-		t.Fatalf("group day = %q, want 20260711", group.Day)
 	}
 }
 

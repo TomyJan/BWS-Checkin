@@ -16,23 +16,6 @@ func TestLoadOAuthProvidersFromJSON(t *testing.T) {
 	}
 }
 
-func TestLoadLegacyOIDCAsOAuthProvider(t *testing.T) {
-	t.Setenv("BWS_DEV_AUTH", "1")
-	t.Setenv("BWS_OIDC_ISSUER", "https://issuer.example.com")
-	t.Setenv("BWS_OIDC_CLIENT_ID", "oidc-client")
-	t.Setenv("BWS_OIDC_CLIENT_SECRET", "oidc-secret")
-	t.Setenv("BWS_OIDC_NAME", "统一认证")
-
-	cfg := Load()
-	if len(cfg.OAuthProviders) != 1 {
-		t.Fatalf("providers length = %d, want 1", len(cfg.OAuthProviders))
-	}
-	provider := cfg.OAuthProviders[0]
-	if provider.ID != "oidc" || provider.Name != "统一认证" || provider.Type != "oidc" || provider.IssuerURL != "https://issuer.example.com" {
-		t.Fatalf("provider = %+v", provider)
-	}
-}
-
 func TestLoadUsesDevelopmentBilibiliCookieSecretFallback(t *testing.T) {
 	t.Setenv("BWS_DEV_AUTH", "1")
 	t.Setenv("BWS_BILIBILI_COOKIE_SECRET", "")
@@ -59,9 +42,15 @@ func TestValidateProductionRequiresOIDCAndSessionSecret(t *testing.T) {
 		t.Fatal("Validate() err = nil, want missing production config error")
 	}
 
-	cfg.OIDCIssuerURL = "https://issuer.example.com"
-	cfg.OIDCClientID = "client-id"
-	cfg.OIDCClientSecret = "client-secret"
+	cfg.OAuthProviders = []OAuthProviderConfig{{
+		ID:           "oidc",
+		Name:         "统一认证",
+		Type:         "oidc",
+		IssuerURL:    "https://issuer.example.com",
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		RedirectURL:  "https://bws.example.com/api/v1/auth/oauth/oidc/callback",
+	}}
 	cfg.SessionSecret = "production-secret"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() with production config: %v", err)

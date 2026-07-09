@@ -86,21 +86,23 @@ func TestMeRequiresLogin(t *testing.T) {
 	}
 }
 
-func TestOIDCLoginAndCallbackCreatesSession(t *testing.T) {
+func TestOIDCOAuthProviderLoginAndCallbackCreatesSession(t *testing.T) {
 	s := newTestStore(t)
 	issuer := newOIDCTestProvider(t)
 	h := NewRouter(Deps{
 		Store: s,
-		OIDC: OIDCConfig{
-			IssuerURL:         issuer.URL,
-			ClientID:          "bws-client",
-			ClientSecret:      "bws-secret",
-			RedirectURL:       "http://app.test/api/v1/auth/oidc/callback",
-			PostLoginRedirect: "http://app.test/",
-		},
+		OAuthProviders: []OAuthProviderConfig{{
+			ID:           "oidc",
+			Name:         "统一认证",
+			Type:         "oidc",
+			IssuerURL:    issuer.URL,
+			ClientID:     "bws-client",
+			ClientSecret: "bws-secret",
+			RedirectURL:  "http://app.test/api/v1/auth/oauth/oidc/callback",
+		}},
 	})
 
-	login := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/login", nil)
+	login := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/login", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, login)
 	if w.Code != http.StatusFound {
@@ -117,14 +119,14 @@ func TestOIDCLoginAndCallbackCreatesSession(t *testing.T) {
 	if authURL.Query().Get("client_id") != "bws-client" {
 		t.Fatalf("client_id = %q", authURL.Query().Get("client_id"))
 	}
-	if authURL.Query().Get("redirect_uri") != "http://app.test/api/v1/auth/oidc/callback" {
+	if authURL.Query().Get("redirect_uri") != "http://app.test/api/v1/auth/oauth/oidc/callback" {
 		t.Fatalf("redirect_uri = %q", authURL.Query().Get("redirect_uri"))
 	}
 	if authURL.Query().Get("state") == "" {
 		t.Fatal("state is empty")
 	}
 
-	callback := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?code=auth-code&state="+url.QueryEscape(authURL.Query().Get("state")), nil)
+	callback := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=auth-code&state="+url.QueryEscape(authURL.Query().Get("state")), nil)
 	for _, c := range w.Result().Cookies() {
 		callback.AddCookie(c)
 	}
@@ -133,7 +135,7 @@ func TestOIDCLoginAndCallbackCreatesSession(t *testing.T) {
 	if w.Code != http.StatusFound {
 		t.Fatalf("callback status = %d, body = %s", w.Code, w.Body.String())
 	}
-	if w.Header().Get("Location") != "http://app.test/" {
+	if w.Header().Get("Location") != "/" {
 		t.Fatalf("callback location = %q", w.Header().Get("Location"))
 	}
 
@@ -157,16 +159,18 @@ func TestOIDCCallbackRejectsInvalidState(t *testing.T) {
 	issuer := newOIDCTestProvider(t)
 	h := NewRouter(Deps{
 		Store: s,
-		OIDC: OIDCConfig{
-			IssuerURL:         issuer.URL,
-			ClientID:          "bws-client",
-			ClientSecret:      "bws-secret",
-			RedirectURL:       "http://app.test/api/v1/auth/oidc/callback",
-			PostLoginRedirect: "http://app.test/",
-		},
+		OAuthProviders: []OAuthProviderConfig{{
+			ID:           "oidc",
+			Name:         "统一认证",
+			Type:         "oidc",
+			IssuerURL:    issuer.URL,
+			ClientID:     "bws-client",
+			ClientSecret: "bws-secret",
+			RedirectURL:  "http://app.test/api/v1/auth/oauth/oidc/callback",
+		}},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?code=auth-code&state=bad", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=auth-code&state=bad", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -179,16 +183,18 @@ func TestOIDCCallbackRejectsInvalidIDTokenIssuer(t *testing.T) {
 	issuer := newOIDCTestProviderWithIDTokenIssuer(t, "https://wrong-issuer.example")
 	h := NewRouter(Deps{
 		Store: s,
-		OIDC: OIDCConfig{
-			IssuerURL:         issuer.URL,
-			ClientID:          "bws-client",
-			ClientSecret:      "bws-secret",
-			RedirectURL:       "http://app.test/api/v1/auth/oidc/callback",
-			PostLoginRedirect: "http://app.test/",
-		},
+		OAuthProviders: []OAuthProviderConfig{{
+			ID:           "oidc",
+			Name:         "统一认证",
+			Type:         "oidc",
+			IssuerURL:    issuer.URL,
+			ClientID:     "bws-client",
+			ClientSecret: "bws-secret",
+			RedirectURL:  "http://app.test/api/v1/auth/oauth/oidc/callback",
+		}},
 	})
 
-	login := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/login", nil)
+	login := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/login", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, login)
 	if w.Code != http.StatusFound {
@@ -199,7 +205,7 @@ func TestOIDCCallbackRejectsInvalidIDTokenIssuer(t *testing.T) {
 		t.Fatalf("parse auth redirect: %v", err)
 	}
 
-	callback := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?code=auth-code&state="+url.QueryEscape(authURL.Query().Get("state")), nil)
+	callback := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=auth-code&state="+url.QueryEscape(authURL.Query().Get("state")), nil)
 	for _, c := range w.Result().Cookies() {
 		callback.AddCookie(c)
 	}

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"bws-checkin/backend/internal/domain"
@@ -116,7 +115,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{db: db}
-	if err := s.migrate(); err != nil {
+	if err := s.setupSchema(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -129,7 +128,7 @@ func OpenMemory() (*Store, error) {
 		return nil, err
 	}
 	s := &Store{db: db}
-	if err := s.migrate(); err != nil {
+	if err := s.setupSchema(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -140,127 +139,12 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) migrate() error {
+func (s *Store) setupSchema() error {
 	body, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
 		return err
 	}
 	if _, err := s.db.Exec(string(body)); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("users", "qr_source", "TEXT NOT NULL DEFAULT 'uploaded'"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("tasks", "external_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("tasks", "group_name", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("tasks", "title", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("tasks", "reward_coins", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("tasks", "description", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("tasks", "image_url", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("tasks", "venue_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("tasks", "venue_name", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("tasks", "event_day", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("tasks", "sync_source", "TEXT NOT NULL DEFAULT 'default'"); err != nil {
-		return err
-	}
-	if err := s.ensureTaskCompletionColumn("completed", "INTEGER NOT NULL DEFAULT 1"); err != nil {
-		return err
-	}
-	if err := s.ensureTaskCompletionColumn("status", "TEXT NOT NULL DEFAULT 'manual_completed'"); err != nil {
-		return err
-	}
-	if err := s.ensureTaskCompletionColumn("source", "TEXT NOT NULL DEFAULT 'manual'"); err != nil {
-		return err
-	}
-	if err := s.ensureTaskCompletionColumn("live_checked_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureTaskCompletionColumn("live_stale", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := s.ensureTaskCompletionColumn("updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("groups", "join_locked", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := s.ensureColumn("groups", "archived_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		return err
-	}
-	if err := s.ensureGroupDayConstraint(); err != nil {
-		return err
-	}
-	if _, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS bilibili_accounts (
-			user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-			mid TEXT NOT NULL,
-			uname TEXT NOT NULL,
-			face_url TEXT NOT NULL DEFAULT '',
-			cookie_ciphertext TEXT NOT NULL,
-			cookie_expires_at TEXT NOT NULL DEFAULT '',
-			refresh_token_ciphertext TEXT NOT NULL DEFAULT '',
-			last_validated_at TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`); err != nil {
-		return err
-	}
-	if _, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS oauth_accounts (
-			provider_id TEXT NOT NULL,
-			provider_subject TEXT NOT NULL,
-			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			display_name TEXT NOT NULL DEFAULT '',
-			avatar_url TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (provider_id, provider_subject)
-		)
-	`); err != nil {
-		return err
-	}
-	if _, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS task_sync_state (
-			id TEXT PRIMARY KEY,
-			last_success_at TEXT NOT NULL DEFAULT '',
-			last_error_at TEXT NOT NULL DEFAULT '',
-			last_error_code TEXT NOT NULL DEFAULT '',
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`); err != nil {
-		return err
-	}
-	if _, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS audit_logs (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			actor_user_id TEXT NOT NULL REFERENCES users(id),
-			action TEXT NOT NULL,
-			group_id TEXT NOT NULL DEFAULT '',
-			target_user_id TEXT,
-			task_id TEXT NOT NULL DEFAULT '',
-			metadata TEXT NOT NULL DEFAULT '{}',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`); err != nil {
 		return err
 	}
 	if err := s.seedDefaultTasks(); err != nil {
@@ -359,122 +243,6 @@ var defaultTaskSeeds = []defaultTaskSeed{
 	{ExternalID: "3260", GroupName: "6.1馆", Name: "登陆大会员展台", Title: "登陆大会员展台", RewardCoins: 1, Description: "登陆6.1馆无限副本大陆展区大会员展台打卡即完成打卡任务，探索三大副本集印记还可领专属奖励及抽奖资格", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/bW4BfKgLMP.jpg", VenueID: "6", VenueName: "6.1馆", SortOrder: 10},
 	{ExternalID: "3300", GroupName: "6.1馆", Name: "小马宝莉友谊魔法站", Title: "小马宝莉友谊魔法站", RewardCoins: 1, Description: "关注小马宝莉官方账号，按要求发布笔记，即可获得小马宝莉BW限定周边一套（BW限定发饰及PR卡）。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260622/a31a3a243f4d5d1b14b456973fa6db84/kBbqSpaidP.jpg", VenueID: "6", VenueName: "6.1馆", SortOrder: 10},
 	{ExternalID: "3280", GroupName: "6.1馆", Name: "特聘行动·歼灭罗刹", Title: "特聘行动·歼灭罗刹", RewardCoins: 2, Description: "玩家排队参与“特聘行动·歼灭罗刹\"互动，每人三次投掷机会，成功投中1次即可打卡，失败可重复挑战。", ImageURL: "//i0.hdslb.com/bfs/activity-plat/static/20260615/a31a3a243f4d5d1b14b456973fa6db84/1KOZLzgmbo.jpg", VenueID: "6", VenueName: "6.1馆", SortOrder: 10},
-}
-
-func (s *Store) ensureTaskCompletionColumn(name string, definition string) error {
-	return s.ensureColumn("task_completions", name, definition)
-}
-
-func (s *Store) ensureColumn(table string, name string, definition string) error {
-	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var cid int
-		var columnName string
-		var columnType string
-		var notNull int
-		var defaultValue sql.NullString
-		var primaryKey int
-		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			return err
-		}
-		if columnName == name {
-			return rows.Err()
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + name + ` ` + definition)
-	return err
-}
-
-func (s *Store) ensureGroupDayConstraint() error {
-	ctx := context.Background()
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	var tableSQL string
-	if err := conn.QueryRowContext(ctx, `
-		SELECT sql
-		FROM sqlite_master
-		WHERE type = 'table' AND name = 'groups'
-	`).Scan(&tableSQL); err != nil {
-		return err
-	}
-	if strings.Contains(tableSQL, "'20260710'") &&
-		strings.Contains(tableSQL, "'20260711'") &&
-		strings.Contains(tableSQL, "'20260712'") {
-		return nil
-	}
-	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
-		return err
-	}
-	defer func() { _, _ = conn.ExecContext(ctx, `PRAGMA foreign_keys = ON`) }()
-
-	tx, err := conn.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`
-		CREATE TABLE groups_new (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			day TEXT NOT NULL CHECK (day IN ('20260710', '20260711', '20260712', 'friday', 'saturday', 'sunday')),
-			description TEXT NOT NULL DEFAULT '',
-			owner_user_id TEXT NOT NULL REFERENCES users(id),
-			join_locked INTEGER NOT NULL DEFAULT 0,
-			archived_at TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`
-		INSERT INTO groups_new (
-			id, name, day, description, owner_user_id, join_locked, archived_at, created_at, updated_at
-		)
-		SELECT id, name, day, description, owner_user_id, join_locked, archived_at, created_at, updated_at
-		FROM groups
-	`); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DROP TABLE groups`); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`ALTER TABLE groups_new RENAME TO groups`); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	rows, err := conn.QueryContext(ctx, `PRAGMA foreign_key_check`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	if rows.Next() {
-		var table string
-		var rowID int64
-		var parent string
-		var fkID int
-		if err := rows.Scan(&table, &rowID, &parent, &fkID); err != nil {
-			return err
-		}
-		return fmt.Errorf("foreign key violation after groups migration: table=%s rowid=%d parent=%s fkid=%d", table, rowID, parent, fkID)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *Store) UpsertUser(ctx context.Context, subject, displayName string) (domain.User, error) {

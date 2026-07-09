@@ -15,14 +15,11 @@ import (
 	"time"
 )
 
-const oidcStateCookieName = "bws_oidc_state"
-
 type OIDCConfig struct {
-	IssuerURL         string
-	ClientID          string
-	ClientSecret      string
-	RedirectURL       string
-	PostLoginRedirect string
+	IssuerURL    string
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
 }
 
 type oidcDiscovery struct {
@@ -69,79 +66,6 @@ type oidcUserinfo struct {
 	PreferredUsername string `json:"preferred_username"`
 	Email             string `json:"email"`
 	Picture           string `json:"picture"`
-}
-
-func (h Handler) oidcLogin(w http.ResponseWriter, r *http.Request) {
-	discovery, err := h.oidcDiscovery(r)
-	if err != nil {
-		http.Error(w, "OIDC is not configured", http.StatusServiceUnavailable)
-		return
-	}
-	state, err := randomState()
-	if err != nil {
-		http.Error(w, "failed to create OIDC state", http.StatusInternalServerError)
-		return
-	}
-	setOIDCState(w, state)
-
-	values := url.Values{}
-	values.Set("client_id", h.deps.OIDC.ClientID)
-	values.Set("redirect_uri", h.deps.OIDC.RedirectURL)
-	values.Set("response_type", "code")
-	values.Set("scope", "openid profile email")
-	values.Set("state", state)
-
-	redirectURL := discovery.AuthorizationEndpoint
-	separator := "?"
-	if strings.Contains(redirectURL, "?") {
-		separator = "&"
-	}
-	http.Redirect(w, r, redirectURL+separator+values.Encode(), http.StatusFound)
-}
-
-func (h Handler) oidcCallback(w http.ResponseWriter, r *http.Request) {
-	if err := h.validateOIDCState(r); err != nil {
-		http.Error(w, "invalid OIDC state", http.StatusBadRequest)
-		return
-	}
-	code := r.URL.Query().Get("code")
-	if code == "" {
-		http.Error(w, "missing OIDC code", http.StatusBadRequest)
-		return
-	}
-	discovery, err := h.oidcDiscovery(r)
-	if err != nil {
-		http.Error(w, "OIDC is not configured", http.StatusServiceUnavailable)
-		return
-	}
-	token, err := h.exchangeOIDCCode(r, discovery, code)
-	if err != nil {
-		http.Error(w, "OIDC token exchange failed", http.StatusBadGateway)
-		return
-	}
-	idTokenSubject, err := h.validateOIDCIDToken(r, discovery, token.IDToken)
-	if err != nil {
-		http.Error(w, "OIDC id token validation failed", http.StatusBadGateway)
-		return
-	}
-	userinfo, err := h.loadOIDCUserinfo(r, discovery, token.AccessToken)
-	if err != nil {
-		http.Error(w, "OIDC userinfo failed", http.StatusBadGateway)
-		return
-	}
-	displayName := userinfo.displayName()
-	if displayName == "" || userinfo.Subject == "" || userinfo.Subject != idTokenSubject {
-		http.Error(w, "OIDC userinfo is incomplete", http.StatusBadGateway)
-		return
-	}
-	user, err := h.deps.Store.UpsertUser(r.Context(), "oidc:"+userinfo.Subject, displayName)
-	if err != nil {
-		http.Error(w, "failed to upsert OIDC user", http.StatusInternalServerError)
-		return
-	}
-	h.setSession(w, user.ID)
-	clearOIDCState(w)
-	http.Redirect(w, r, h.postLoginRedirect(), http.StatusFound)
 }
 
 func (h Handler) oidcDiscovery(r *http.Request) (oidcDiscovery, error) {
@@ -347,43 +271,8 @@ func (h Handler) loadOIDCUserinfo(r *http.Request, discovery oidcDiscovery, acce
 	return userinfo, nil
 }
 
-func (h Handler) validateOIDCState(r *http.Request) error {
-	cookie, err := r.Cookie(oidcStateCookieName)
-	if err != nil {
-		return err
-	}
-	if cookie.Value == "" || cookie.Value != r.URL.Query().Get("state") {
-		return errors.New("oidc state mismatch")
-	}
-	return nil
-}
-
 func (h Handler) postLoginRedirect() string {
-	if h.deps.OIDC.PostLoginRedirect != "" {
-		return h.deps.OIDC.PostLoginRedirect
-	}
 	return "/"
-}
-
-func setOIDCState(w http.ResponseWriter, state string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     oidcStateCookieName,
-		Value:    state,
-		Path:     "/api/v1/auth/oidc",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-func clearOIDCState(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     oidcStateCookieName,
-		Value:    "",
-		Path:     "/api/v1/auth/oidc",
-		MaxAge:   -1,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
 }
 
 func randomState() (string, error) {

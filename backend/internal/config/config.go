@@ -15,10 +15,6 @@ type Config struct {
 	UploadDir            string
 	DevAuth              bool
 	PublicBase           string
-	OIDCIssuerURL        string
-	OIDCClientID         string
-	OIDCClientSecret     string
-	OIDCRedirectURL      string
 	SessionSecret        string
 	CookieSecure         bool
 	CookieSameSite       string
@@ -56,10 +52,6 @@ func Load() Config {
 		UploadDir:            env("BWS_UPLOAD_DIR", "data/uploads"),
 		DevAuth:              devAuth,
 		PublicBase:           env("BWS_PUBLIC_BASE", "http://localhost:5173"),
-		OIDCIssuerURL:        env("BWS_OIDC_ISSUER", ""),
-		OIDCClientID:         env("BWS_OIDC_CLIENT_ID", ""),
-		OIDCClientSecret:     env("BWS_OIDC_CLIENT_SECRET", ""),
-		OIDCRedirectURL:      env("BWS_OIDC_REDIRECT_URL", ""),
 		SessionSecret:        env("BWS_SESSION_SECRET", ""),
 		CookieSecure:         env("BWS_COOKIE_SECURE", "0") == "1",
 		CookieSameSite:       env("BWS_COOKIE_SAMESITE", "lax"),
@@ -81,20 +73,6 @@ func (c Config) Validate() error {
 		return errors.New("BWS_SESSION_SECRET is required when BWS_DEV_AUTH=0")
 	}
 	providers := c.OAuthProviders
-	if len(providers) == 0 && (c.OIDCIssuerURL != "" || c.OIDCClientID != "" || c.OIDCClientSecret != "") {
-		providers = []OAuthProviderConfig{{
-			ID:           "oidc",
-			Name:         "OIDC 登录",
-			Type:         "oidc",
-			IssuerURL:    c.OIDCIssuerURL,
-			ClientID:     c.OIDCClientID,
-			ClientSecret: c.OIDCClientSecret,
-			RedirectURL:  c.OIDCRedirectURL,
-		}}
-		if providers[0].RedirectURL == "" && c.PublicBase != "" {
-			providers[0].RedirectURL = c.PublicBase + "/api/v1/auth/oauth/oidc/callback"
-		}
-	}
 	if len(providers) == 0 {
 		return errors.New("at least one OAuth provider is required when BWS_DEV_AUTH=0")
 	}
@@ -130,21 +108,6 @@ func loadOAuthProviders(cfg Config) []OAuthProviderConfig {
 	var providers []OAuthProviderConfig
 	if raw := env("BWS_OAUTH_PROVIDERS", ""); raw != "" {
 		_ = json.Unmarshal([]byte(raw), &providers)
-	}
-	if cfg.OIDCIssuerURL != "" || cfg.OIDCClientID != "" || cfg.OIDCClientSecret != "" {
-		redirectURL := cfg.OIDCRedirectURL
-		if redirectURL == "" {
-			redirectURL = cfg.PublicBase + "/api/v1/auth/oauth/oidc/callback"
-		}
-		providers = append(providers, OAuthProviderConfig{
-			ID:           env("BWS_OIDC_ID", "oidc"),
-			Name:         env("BWS_OIDC_NAME", "OIDC 登录"),
-			Type:         "oidc",
-			IssuerURL:    cfg.OIDCIssuerURL,
-			ClientID:     cfg.OIDCClientID,
-			ClientSecret: cfg.OIDCClientSecret,
-			RedirectURL:  redirectURL,
-		})
 	}
 	for index := range providers {
 		if providers[index].Type == "" {

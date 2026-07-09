@@ -52,6 +52,18 @@ func TestAPIRouteDoesNotFallbackToFrontend(t *testing.T) {
 	}
 }
 
+func TestUnknownAPIRouteReturnsNotFound(t *testing.T) {
+	handler := NewRouter(Deps{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/not-found", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
 func TestRouterWritesStructuredRequestLog(t *testing.T) {
 	var out bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&out, &slog.HandlerOptions{Level: slog.LevelInfo}))

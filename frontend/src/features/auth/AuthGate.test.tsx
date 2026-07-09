@@ -139,4 +139,35 @@ describe("AuthGate", () => {
     expect(qqLogin).toHaveAttribute("href", "/api/v1/auth/oauth/qq/login");
     expect(screen.getByRole("button", { name: "开发登录" })).toBeInTheDocument();
   });
+
+  test("does not redirect to the removed dedicated OIDC route when dev login fails", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/me")) {
+        return Promise.resolve(new Response("", { status: 401 }));
+      }
+      if (url.endsWith("/api/v1/oauth/providers")) {
+        return Promise.resolve(
+          Response.json({
+            ok: true,
+            data: { providers: [{ id: "qq", name: "QQ 登录", type: "qq" }] }
+          })
+        );
+      }
+      if (url.endsWith("/api/v1/dev/login?name=TomyJan")) {
+        return Promise.resolve(Response.json({ ok: false, error: { code: "not_found", message: "not found" } }));
+      }
+      return Promise.reject(new Error(`unexpected request ${url}`));
+    });
+
+    renderWithQueryClient(
+      <AuthGate>
+        <div>private content</div>
+      </AuthGate>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "开发登录" }));
+
+    expect(await screen.findByRole("link", { name: "QQ 登录" })).toHaveAttribute("href", "/api/v1/auth/oauth/qq/login");
+  });
 });

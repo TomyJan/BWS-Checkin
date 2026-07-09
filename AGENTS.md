@@ -108,7 +108,7 @@ BWS Checkin 当前技术栈固定为：
 - 后端 Session 使用 HTTP-only Cookie；不要引入 JWT 作为主登录会话。
 - 生产环境强制使用已配置 OAuth provider；本地开发使用 mock login 即可。
 - 系统内部 ID（例如用户 ID、成员 ID）使用 UUID 字符串，不使用自增整数。
-- SQLite schema 暂由 `backend/internal/store/schema.sql` 管理；修改表结构时必须考虑已有本地数据库的兼容迁移。
+- SQLite schema 暂由 `backend/internal/store/schema.sql` 管理；上线前只支持当前 schema，必要时重建本地数据库。
 - 前端必须通过 `frontend/src/api/client.ts` 统一访问 API，不要在组件中散落重复 fetch envelope 解析。
 - 前端服务端状态放在 TanStack Query，本地离线队列和快照放在明确的 `frontend/src/offline/` 模块。
 
@@ -117,7 +117,7 @@ BWS Checkin 当前技术栈固定为：
 - 最终发布产物是单个 Go 二进制，必须内嵌前端 `dist` 文件。
 - 发布构建顺序是：安装前端依赖，执行 `pnpm build`，复制 `frontend/dist` 到 `backend/internal/frontend/dist`，再编译后端。
 - 不需要为前端补充独立静态托管或反向代理配置。
-- 后端处理 `/api/v1/*`，其中包括 `/api/v1/auth/oauth/*`、`/api/v1/auth/oidc/*` 和 `/api/v1/healthz`。
+- 后端处理 `/api/v1/*`，其中包括 `/api/v1/auth/oauth/*` 和 `/api/v1/healthz`。
 - 除上述后端路径外，其他路径全部交给内嵌前端，支持 SPA 刷新和邀请链接直达。
 - 本地开发仍保留前后端分离：Vite dev server 通过 proxy 转发 `/api`。
 

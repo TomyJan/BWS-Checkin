@@ -74,7 +74,7 @@ Release 工作流会自动执行上述流程，并发布 Linux x64 与 Windows x
 - 后端验证通过：`go test ./...`、`go vet ./...`，并确保 `gofmt -l .` 无输出。
 - 前端验证通过：`pnpm test`、`pnpm build`。
 - 生产环境关闭开发登录：`BWS_DEV_AUTH=0`。
-- 生产环境至少配置 1 个 OAuth provider，旧版 `BWS_OIDC_*` 配置会自动映射为 `oidc` provider。
+- 生产环境至少通过 `BWS_OAUTH_PROVIDERS` 配置 1 个 OAuth provider。
 - 生产环境设置 `BWS_SESSION_SECRET`，并在 HTTPS 部署时设置 `BWS_COOKIE_SECURE=1`。
 - 如启用 B 站账号绑定，设置 `BWS_BILIBILI_COOKIE_SECRET`，用于加密保存 B 站 Cookie。
 - 备份策略同时覆盖 `BWS_DB` 和 `BWS_UPLOAD_DIR`。
@@ -85,7 +85,6 @@ Release 工作流会自动执行上述流程，并发布 Linux x64 与 Windows x
 
 - `/api/v1/*`：业务 API，只使用 `GET` 和 `POST`，响应体使用业务 `ok/error` 表示业务状态。
 - `/api/v1/auth/oauth/*`：多 OAuth 渠道登录与回调。
-- `/api/v1/auth/oidc/*`：OIDC 登录与回调。
 - `/api/v1/healthz`：健康检查。
 
 其他路径全部交给内嵌前端，用于支持 SPA 刷新和直接打开互助组页面。
@@ -164,22 +163,16 @@ $env:BWS_COOKIE_SECURE = "1"
 $env:BWS_COOKIE_SAMESITE = "lax"
 ```
 
-旧版 OIDC 环境变量仍然可用，并会映射为一个 `oidc` provider：
+OIDC 示例：
 
 ```powershell
 $env:BWS_DEV_AUTH = "0"
 $env:BWS_PUBLIC_BASE = "https://bws.example.com"
-$env:BWS_OIDC_ISSUER = "https://issuer.example.com"
-$env:BWS_OIDC_CLIENT_ID = "your-client-id"
-$env:BWS_OIDC_CLIENT_SECRET = "your-client-secret"
-$env:BWS_OIDC_REDIRECT_URL = "https://bws.example.com/api/v1/auth/oidc/callback"
+$env:BWS_OAUTH_PROVIDERS = '[{"id":"oidc","name":"统一认证","type":"oidc","issuerUrl":"https://issuer.example.com","clientId":"your-client-id","clientSecret":"your-client-secret","redirectUrl":"https://bws.example.com/api/v1/auth/oauth/oidc/callback"}]'
 $env:BWS_SESSION_SECRET = "replace-with-a-long-random-secret"
 $env:BWS_COOKIE_SECURE = "1"
 $env:BWS_COOKIE_SAMESITE = "lax"
 ```
-
-如果不设置 `BWS_OIDC_REDIRECT_URL`，旧版 OIDC 入口默认使用 `BWS_PUBLIC_BASE + /api/v1/auth/oidc/callback`。
-通过 OAuth provider 列表暴露的 OIDC 渠道默认回调为 `/api/v1/auth/oauth/oidc/callback`。
 
 生产环境关闭 `BWS_DEV_AUTH` 后，服务启动时会校验 OAuth provider 和 `BWS_SESSION_SECRET`。缺少必要配置时后端会直接启动失败，避免以不完整鉴权配置对外提供服务。
 
@@ -204,12 +197,6 @@ $env:BWS_COOKIE_SAMESITE = "lax"
 - 提前告知用户需要重新登录。
 
 如需无感轮换，需要后续扩展为「当前密钥 + 旧密钥列表」的校验模型；当前版本暂不包含该机制。
-
-## 数据兼容性
-
-用户 ID、成员 ID 等系统内部 ID 使用 UUID 字符串。旧版本如果已经创建过自增整型用户 ID 的 SQLite 数据库，不能直接复用新版本 schema。
-
-升级旧本地数据前请先备份 `BWS_DB` 和 `BWS_UPLOAD_DIR`。当前项目尚未提供自动迁移脚本；开发环境可以删除旧数据库重建，生产环境需要单独编写并验证迁移脚本。
 
 ## 系统日志
 

@@ -2,9 +2,9 @@
 
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
-**目标：** 构建 BWS Checkin 的可运行 MVP：OIDC/mock 登录、二维码上传、互助组、点位任务、成员打卡状态和符合设计的前端交互。
+**目标：** 构建 BWS Checkin 的可运行 MVP：OAuth/mock 登录、二维码上传、互助组、点位任务、成员打卡状态和符合设计的前端交互。
 
-**架构：** 前后端分离。后端使用 Go + chi 提供 `/api/v1` JSON API、Session Cookie、SQLite 数据持久化和本地二维码文件存储；前端使用 Vite + React + TypeScript + MUI 通过 API 驱动页面状态。MVP 优先保证本地开发可跑、核心行为完整，生产 OIDC 接口保留配置入口。
+**架构：** 前后端分离。后端使用 Go + chi 提供 `/api/v1` JSON API、Session Cookie、SQLite 数据持久化和本地二维码文件存储；前端使用 Vite + React + TypeScript + MUI 通过 API 驱动页面状态。MVP 优先保证本地开发可跑、核心行为完整，生产环境通过 OAuth provider 配置登录渠道。
 
 **技术栈：** Go 1.25、chi、SQLite、Vite、React、TypeScript、MUI Material、TanStack Query、React Router。
 
@@ -17,8 +17,8 @@
 - 创建：`backend/go.mod`，Go 模块定义。
 - 创建：`backend/cmd/server/main.go`，HTTP 服务入口。
 - 创建：`backend/internal/app/app.go`，组装配置、数据库、路由和静态文件服务。
-- 创建：`backend/internal/config/config.go`，读取端口、数据库路径、上传目录、开发登录开关和 OIDC 配置。
-- 创建：`backend/internal/http/router.go`，注册 `/api/v1`、`/api/v1/auth/oidc` 和健康检查路由。
+- 创建：`backend/internal/config/config.go`，读取端口、数据库路径、上传目录、开发登录开关和 OAuth provider 配置。
+- 创建：`backend/internal/http/router.go`，注册 `/api/v1`、`/api/v1/auth/oauth` 和健康检查路由。
 - 创建：`backend/internal/http/session.go`，Session Cookie 读写和鉴权中间件。
 - 创建：`backend/internal/http/handlers.go`，API handler。
 - 创建：`backend/internal/store/store.go`，SQLite 访问层。
@@ -418,7 +418,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{db: db}
-	if err := s.migrate(); err != nil {
+	if err := s.setupSchema(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -431,7 +431,7 @@ func OpenMemory() (*Store, error) {
 		return nil, err
 	}
 	s := &Store{db: db}
-	if err := s.migrate(); err != nil {
+	if err := s.setupSchema(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -442,7 +442,7 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) migrate() error {
+func (s *Store) setupSchema() error {
 	body, err := schemaFS.ReadFile("schema.sql")
 	if err != nil {
 		return err
@@ -1298,7 +1298,7 @@ npm install
 npm run dev
 ```
 
-开发登录地址：`/api/v1/dev/login`。生产环境应关闭 `BWS_DEV_AUTH` 并配置 OIDC。
+开发登录地址：`/api/v1/dev/login`。生产环境应关闭 `BWS_DEV_AUTH` 并配置 OAuth provider。
 ```
 
 - [ ] **步骤 3：运行完整后端测试**

@@ -25,8 +25,6 @@ func NewRouterWithLogger(deps Deps, logger *slog.Logger) http.Handler {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("ok"))
 		})
-		r.Get("/auth/oidc/login", h.oidcLogin)
-		r.Get("/auth/oidc/callback", h.oidcCallback)
 		r.Get("/auth/oauth/{provider}/login", h.oauthLogin)
 		r.Get("/auth/oauth/{provider}/callback", h.oauthCallback)
 		r.Post("/dev/login", h.devLogin)
@@ -59,6 +57,7 @@ func NewRouterWithLogger(deps Deps, logger *slog.Logger) http.Handler {
 		r.Post("/task/status/refresh", h.refreshTaskStatus)
 		r.Post("/task/complete", h.completeTask)
 		r.Post("/task/uncomplete", h.uncompleteTask)
+		r.NotFound(http.NotFound)
 	})
 	r.NotFound(frontend.Handler().ServeHTTP)
 	return r

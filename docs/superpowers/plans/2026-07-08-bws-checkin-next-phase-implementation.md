@@ -29,7 +29,7 @@
 - 修改：`frontend/src/features/home/HomePage.tsx`，增加归档组开关。
 - 修改：`frontend/src/features/groups/GroupPage.tsx`，增加极简离线徽标、归档禁用、自动切换下一未完成成员和成员二维码状态。
 - 修改：`frontend/src/features/groups/GroupDialogs.tsx`，增加组编辑弹窗。
-- 修改：`frontend/src/offline/groupSnapshot.ts`，保留完整快照结构兼容。
+- 修改：`frontend/src/offline/groupSnapshot.ts`，维护完整快照结构。
 - 修改：`frontend/src/styles.css`，补充归档、离线和缺失二维码状态样式。
 
 文档：
@@ -60,7 +60,7 @@ go test ./internal/store
 
 修改 `schema.sql` 和 `store.go`：
 
-- `groups` 增加 `join_locked` 和 `archived_at` 的兼容迁移。
+- `groups` 当前 schema 包含 `join_locked` 和 `archived_at`。
 - 增加 `UpdateGroup`、`SetGroupJoinLocked`、`ArchiveGroup`。
 - `JoinGroup` 和 `SyncTaskCompletion` 检查归档 / 锁定状态。
 

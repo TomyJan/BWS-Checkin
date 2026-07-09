@@ -50,13 +50,6 @@ func New(cfg config.Config) (http.Handler, func(), error) {
 		BilibiliCookieSecret: cfg.BilibiliCookieSecret,
 		TaskSync:             taskSync,
 		OAuthProviders:       oauthProviders(cfg),
-		OIDC: httpapi.OIDCConfig{
-			IssuerURL:         cfg.OIDCIssuerURL,
-			ClientID:          cfg.OIDCClientID,
-			ClientSecret:      cfg.OIDCClientSecret,
-			RedirectURL:       oidcRedirectURL(cfg),
-			PostLoginRedirect: cfg.PublicBase,
-		},
 		Session: httpapi.SessionConfig{
 			Secret:   cfg.SessionSecret,
 			Secure:   cfg.CookieSecure,
@@ -97,13 +90,6 @@ func runTaskSync(ctx context.Context, syncer *tasksync.Syncer) {
 			_ = syncer.Sync(ctx)
 		}
 	}
-}
-
-func oidcRedirectURL(cfg config.Config) string {
-	if cfg.OIDCRedirectURL != "" {
-		return cfg.OIDCRedirectURL
-	}
-	return cfg.PublicBase + "/api/v1/auth/oidc/callback"
 }
 
 func sameSite(value string) http.SameSite {

@@ -39,7 +39,7 @@ export function AuthGate({ children }: PropsWithChildren) {
       cacheMe(response);
       queryClient.setQueryData(["me"], response);
     } catch {
-      window.location.assign("/api/v1/auth/oidc/login");
+      return;
     }
   }
 

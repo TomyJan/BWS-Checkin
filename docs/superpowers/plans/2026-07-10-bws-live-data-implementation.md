@@ -112,7 +112,7 @@ go test ./internal/store -run "TestStoreBilibiliAccountAndQRSource|TestStoreComp
 - `users.qr_source TEXT NOT NULL DEFAULT 'uploaded' CHECK (...)`。
 - `bilibili_accounts` 表。
 - `tasks` 增加 `external_id`、`image_url`、`venue_id`、`venue_name`、`event_day`、`sync_source`。
-- `task_completions` 改为 `status`、`source`、`live_checked_at`，保留 `completed` 兼容当前查询，开发期允许重建数据库。
+- `task_completions` 使用 `status`、`source`、`live_checked_at`，`completed` 继续作为当前查询需要的布尔字段，开发期允许重建数据库。
 - `task_sync_state` 表保存最近同步结果。
 - `domain.User.QRSource`、`domain.BilibiliAccount`、`domain.CompletionStatus`、`domain.CompletionSource`。
 - `SaveBilibiliAccount`、`BilibiliAccount`、`UnbindBilibiliAccount`、`SetUserQRSource`、`UpsertLiveTaskCompletion`。
@@ -588,5 +588,5 @@ git commit -m "docs(真实数据): 补充接入与验证说明"
 - 每个功能任务都包含红灯测试、失败验证、最少实现、通过验证和原子提交步骤。
 - 新 API 继续使用 `/api/v1`、GET / POST 和动作式路径。
 - B 站 Cookie 不进入前端，不记录日志。
-- 当前开发阶段不处理旧数据库兼容迁移，允许重建本地 SQLite。
+- 当前开发阶段只支持当前 schema，允许重建本地 SQLite。
 - 前端仍通过 `frontend/src/api/client.ts` 统一访问 API。

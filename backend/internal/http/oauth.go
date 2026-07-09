@@ -361,11 +361,10 @@ func (h Handler) loginOrBindOAuthProfile(r *http.Request, provider OAuthProvider
 func (h Handler) withOIDCProvider(provider OAuthProviderConfig) Handler {
 	oidcHandler := h
 	oidcHandler.deps.OIDC = OIDCConfig{
-		IssuerURL:         provider.IssuerURL,
-		ClientID:          provider.ClientID,
-		ClientSecret:      provider.ClientSecret,
-		RedirectURL:       provider.RedirectURL,
-		PostLoginRedirect: h.postLoginRedirect(),
+		IssuerURL:    provider.IssuerURL,
+		ClientID:     provider.ClientID,
+		ClientSecret: provider.ClientSecret,
+		RedirectURL:  provider.RedirectURL,
 	}
 	return oidcHandler
 }
