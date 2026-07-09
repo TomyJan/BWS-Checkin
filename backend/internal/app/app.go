@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"bws-checkin/backend/internal/bilibili"
 	"bws-checkin/backend/internal/config"
 	httpapi "bws-checkin/backend/internal/http"
 	"bws-checkin/backend/internal/store"
@@ -18,10 +19,19 @@ func New(cfg config.Config) (http.Handler, func(), error) {
 		return nil, nil, err
 	}
 	cleanup := func() { _ = db.Close() }
+	var bilibiliClient *bilibili.Client
+	if cfg.BilibiliLoginEnabled {
+		bilibiliClient = bilibili.NewClient(bilibili.ClientOptions{
+			PassportBaseURL: cfg.BilibiliPassportBase,
+			APIBaseURL:      cfg.BilibiliAPIBase,
+		})
+	}
 	return httpapi.NewRouter(httpapi.Deps{
-		Store:     db,
-		DevAuth:   cfg.DevAuth,
-		UploadDir: cfg.UploadDir,
+		Store:                db,
+		DevAuth:              cfg.DevAuth,
+		UploadDir:            cfg.UploadDir,
+		Bilibili:             bilibiliClient,
+		BilibiliCookieSecret: cfg.BilibiliCookieSecret,
 		OIDC: httpapi.OIDCConfig{
 			IssuerURL:         cfg.OIDCIssuerURL,
 			ClientID:          cfg.OIDCClientID,

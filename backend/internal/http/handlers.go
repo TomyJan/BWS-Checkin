@@ -14,18 +14,22 @@ import (
 	"strings"
 	"time"
 
+	"bws-checkin/backend/internal/bilibili"
 	"bws-checkin/backend/internal/domain"
 	"bws-checkin/backend/internal/filestore"
+	"bws-checkin/backend/internal/qrcode"
 	"bws-checkin/backend/internal/store"
 	_ "golang.org/x/image/webp"
 )
 
 type Deps struct {
-	Store     *store.Store
-	DevAuth   bool
-	UploadDir string
-	OIDC      OIDCConfig
-	Session   SessionConfig
+	Store                *store.Store
+	DevAuth              bool
+	UploadDir            string
+	OIDC                 OIDCConfig
+	Session              SessionConfig
+	Bilibili             *bilibili.Client
+	BilibiliCookieSecret string
 }
 
 type Handler struct {
@@ -162,6 +166,42 @@ func (h Handler) deleteQR(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, map[string]bool{"ok": true})
 }
 
+type qrSourceSetRequest struct {
+	Source string `json:"source"`
+}
+
+func (h Handler) setQRSource(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	var input qrSourceSetRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeBusinessError(w, "invalid_json", "invalid JSON")
+		return
+	}
+	if input.Source == domain.QRSourceBilibiliGenerated {
+		if _, err := h.deps.Store.BilibiliAccount(r.Context(), user.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeBusinessError(w, "bilibili_account_required", "")
+				return
+			}
+			writeBusinessError(w, "bilibili_account_load_failed", err.Error())
+			return
+		}
+	}
+	if err := h.deps.Store.SetUserQRSource(r.Context(), user.ID, input.Source); err != nil {
+		writeBusinessError(w, "invalid_qr_source", "")
+		return
+	}
+	updated, err := h.deps.Store.UserByID(r.Context(), user.ID)
+	if err != nil {
+		writeBusinessError(w, "current_user_load_failed", err.Error())
+		return
+	}
+	writeOK(w, map[string]domain.User{"user": updated})
+}
+
 func (h Handler) userQR(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.currentUser(w, r); !ok {
 		return
@@ -171,12 +211,165 @@ func (h Handler) userQR(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "user_id_required", "userId is required")
 		return
 	}
+	targetUser, err := h.deps.Store.UserByID(r.Context(), userID)
+	if err != nil {
+		writeBusinessError(w, "qr_not_found", "QR image not found")
+		return
+	}
+	if targetUser.QRSource == domain.QRSourceBilibiliGenerated {
+		account, err := h.deps.Store.BilibiliAccount(r.Context(), userID)
+		if err != nil {
+			writeBusinessError(w, "qr_not_found", "QR image not found")
+			return
+		}
+		png, err := qrcode.BWSPNG(account.MID)
+		if err != nil {
+			writeBusinessError(w, "qr_generate_failed", err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(png)
+		return
+	}
 	qrPath, err := h.deps.Store.UserQRPath(r.Context(), userID)
 	if err != nil || qrPath == "" {
 		writeBusinessError(w, "qr_not_found", "QR image not found")
 		return
 	}
 	http.ServeFile(w, r, filepath.Join(h.deps.UploadDir, filepath.Base(qrPath)))
+}
+
+func (h Handler) bilibiliAccount(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	account, err := h.deps.Store.BilibiliAccount(r.Context(), user.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeOK(w, map[string]any{"bound": false})
+		return
+	}
+	if err != nil {
+		writeBusinessError(w, "bilibili_account_load_failed", err.Error())
+		return
+	}
+	writeOK(w, map[string]any{
+		"bound": true,
+		"account": map[string]any{
+			"mid":             account.MID,
+			"uname":           account.Uname,
+			"faceUrl":         account.FaceURL,
+			"cookieExpiresAt": account.CookieExpiresAt,
+			"lastValidatedAt": account.LastValidatedAt,
+		},
+	})
+}
+
+func (h Handler) createBilibiliLoginQRCode(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.currentUser(w, r); !ok {
+		return
+	}
+	if h.deps.Bilibili == nil {
+		writeBusinessError(w, "bilibili_login_disabled", "")
+		return
+	}
+	qr, err := h.deps.Bilibili.CreateLoginQRCode(r.Context())
+	if err != nil {
+		writeBusinessError(w, "bilibili_qrcode_create_failed", err.Error())
+		return
+	}
+	writeOK(w, map[string]any{
+		"qrcode": map[string]any{
+			"url":       qr.URL,
+			"qrcodeKey": qr.QRCodeKey,
+			"expiresAt": qr.ExpiresAt,
+		},
+	})
+}
+
+type bilibiliLoginPollRequest struct {
+	QRCodeKey string `json:"qrcodeKey"`
+}
+
+func (h Handler) pollBilibiliLoginQRCode(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	if h.deps.Bilibili == nil {
+		writeBusinessError(w, "bilibili_login_disabled", "")
+		return
+	}
+	if h.deps.BilibiliCookieSecret == "" {
+		writeBusinessError(w, "bilibili_cookie_secret_required", "")
+		return
+	}
+	var input bilibiliLoginPollRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeBusinessError(w, "invalid_json", "invalid JSON")
+		return
+	}
+	if input.QRCodeKey == "" {
+		writeBusinessError(w, "bilibili_qrcode_key_required", "")
+		return
+	}
+	poll, err := h.deps.Bilibili.PollLoginQRCode(r.Context(), input.QRCodeKey)
+	if err != nil {
+		writeBusinessError(w, "bilibili_qrcode_poll_failed", err.Error())
+		return
+	}
+	if poll.Status != bilibili.LoginStatusConfirmed {
+		writeOK(w, map[string]any{"status": poll.Status, "message": poll.Message})
+		return
+	}
+	nav, err := h.deps.Bilibili.Nav(r.Context(), poll.Cookies)
+	if err != nil {
+		writeBusinessError(w, "bilibili_nav_failed", err.Error())
+		return
+	}
+	cookieCiphertext, err := bilibili.EncryptCookieJar(h.deps.BilibiliCookieSecret, poll.Cookies)
+	if err != nil {
+		writeBusinessError(w, "bilibili_cookie_encrypt_failed", err.Error())
+		return
+	}
+	now := time.Now().UTC()
+	if err := h.deps.Store.SaveBilibiliAccount(r.Context(), domain.BilibiliAccount{
+		UserID:           user.ID,
+		MID:              nav.MID,
+		Uname:            nav.Uname,
+		FaceURL:          nav.FaceURL,
+		CookieCiphertext: cookieCiphertext,
+		LastValidatedAt:  &now,
+	}); err != nil {
+		writeBusinessError(w, "bilibili_account_save_failed", err.Error())
+		return
+	}
+	h.audit(r, user.ID, "bilibili.bind", "", user.ID, "")
+	writeOK(w, map[string]any{
+		"status": bilibili.LoginStatusConfirmed,
+		"account": map[string]any{
+			"mid":     nav.MID,
+			"uname":   nav.Uname,
+			"faceUrl": nav.FaceURL,
+		},
+	})
+}
+
+func (h Handler) unbindBilibiliAccount(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	if err := h.deps.Store.UnbindBilibiliAccount(r.Context(), user.ID); err != nil {
+		writeBusinessError(w, "bilibili_account_unbind_failed", err.Error())
+		return
+	}
+	if user.QRSource == domain.QRSourceBilibiliGenerated {
+		_ = h.deps.Store.SetUserQRSource(r.Context(), user.ID, domain.QRSourceUploaded)
+	}
+	h.audit(r, user.ID, "bilibili.unbind", "", user.ID, "")
+	writeOK(w, map[string]bool{"ok": true})
 }
 
 type createGroupRequest struct {

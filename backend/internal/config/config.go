@@ -7,36 +7,44 @@ import (
 )
 
 type Config struct {
-	Addr             string
-	DBPath           string
-	UploadDir        string
-	DevAuth          bool
-	PublicBase       string
-	OIDCIssuerURL    string
-	OIDCClientID     string
-	OIDCClientSecret string
-	OIDCRedirectURL  string
-	SessionSecret    string
-	CookieSecure     bool
-	CookieSameSite   string
-	SessionMaxAge    int
+	Addr                 string
+	DBPath               string
+	UploadDir            string
+	DevAuth              bool
+	PublicBase           string
+	OIDCIssuerURL        string
+	OIDCClientID         string
+	OIDCClientSecret     string
+	OIDCRedirectURL      string
+	SessionSecret        string
+	CookieSecure         bool
+	CookieSameSite       string
+	SessionMaxAge        int
+	BilibiliLoginEnabled bool
+	BilibiliCookieSecret string
+	BilibiliPassportBase string
+	BilibiliAPIBase      string
 }
 
 func Load() Config {
 	return Config{
-		Addr:             env("BWS_ADDR", ":8080"),
-		DBPath:           env("BWS_DB", "data/bws.db"),
-		UploadDir:        env("BWS_UPLOAD_DIR", "data/uploads"),
-		DevAuth:          env("BWS_DEV_AUTH", "1") == "1",
-		PublicBase:       env("BWS_PUBLIC_BASE", "http://localhost:5173"),
-		OIDCIssuerURL:    env("BWS_OIDC_ISSUER", ""),
-		OIDCClientID:     env("BWS_OIDC_CLIENT_ID", ""),
-		OIDCClientSecret: env("BWS_OIDC_CLIENT_SECRET", ""),
-		OIDCRedirectURL:  env("BWS_OIDC_REDIRECT_URL", ""),
-		SessionSecret:    env("BWS_SESSION_SECRET", ""),
-		CookieSecure:     env("BWS_COOKIE_SECURE", "0") == "1",
-		CookieSameSite:   env("BWS_COOKIE_SAMESITE", "lax"),
-		SessionMaxAge:    intEnv("BWS_SESSION_MAX_AGE", 60*60*24*30),
+		Addr:                 env("BWS_ADDR", ":8080"),
+		DBPath:               env("BWS_DB", "data/bws.db"),
+		UploadDir:            env("BWS_UPLOAD_DIR", "data/uploads"),
+		DevAuth:              env("BWS_DEV_AUTH", "1") == "1",
+		PublicBase:           env("BWS_PUBLIC_BASE", "http://localhost:5173"),
+		OIDCIssuerURL:        env("BWS_OIDC_ISSUER", ""),
+		OIDCClientID:         env("BWS_OIDC_CLIENT_ID", ""),
+		OIDCClientSecret:     env("BWS_OIDC_CLIENT_SECRET", ""),
+		OIDCRedirectURL:      env("BWS_OIDC_REDIRECT_URL", ""),
+		SessionSecret:        env("BWS_SESSION_SECRET", ""),
+		CookieSecure:         env("BWS_COOKIE_SECURE", "0") == "1",
+		CookieSameSite:       env("BWS_COOKIE_SAMESITE", "lax"),
+		SessionMaxAge:        intEnv("BWS_SESSION_MAX_AGE", 60*60*24*30),
+		BilibiliLoginEnabled: env("BWS_BILIBILI_LOGIN_ENABLED", "1") == "1",
+		BilibiliCookieSecret: env("BWS_BILIBILI_COOKIE_SECRET", ""),
+		BilibiliPassportBase: env("BWS_BILIBILI_PASSPORT_BASE", ""),
+		BilibiliAPIBase:      env("BWS_BILIBILI_API_BASE", ""),
 	}
 }
 
@@ -49,6 +57,9 @@ func (c Config) Validate() error {
 	}
 	if c.OIDCIssuerURL == "" || c.OIDCClientID == "" || c.OIDCClientSecret == "" {
 		return errors.New("OIDC issuer, client ID and client secret are required when BWS_DEV_AUTH=0")
+	}
+	if c.BilibiliLoginEnabled && c.BilibiliCookieSecret == "" {
+		return errors.New("BWS_BILIBILI_COOKIE_SECRET is required when Bilibili login is enabled")
 	}
 	return nil
 }

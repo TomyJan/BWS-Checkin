@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"bws-checkin/backend/internal/bilibili"
 	"bws-checkin/backend/internal/store"
 )
 
@@ -297,6 +298,111 @@ func TestGroupTasksUseAuthenticatedQRImageAPI(t *testing.T) {
 	}
 	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "image/png") {
 		t.Fatalf("content type = %q, want image/png", ct)
+	}
+}
+
+func TestBilibiliAccountRequiresLogin(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/bilibili/account", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("account status = %d, want 401", w.Code)
+	}
+}
+
+func TestBilibiliLoginQRCodeFlowBindsAccountAndGeneratesQR(t *testing.T) {
+	s := newTestStore(t)
+	biliServer := newBilibiliLoginTestServer(t)
+	h := NewRouter(Deps{
+		Store:                s,
+		DevAuth:              true,
+		UploadDir:            t.TempDir(),
+		Bilibili:             bilibili.NewClient(bilibili.ClientOptions{PassportBaseURL: biliServer.URL, APIBaseURL: biliServer.URL, HTTPClient: biliServer.Client()}),
+		BilibiliCookieSecret: "local-test-cookie-secret",
+	})
+	cookies := loginForTest(t, h, "TomyJan")
+	userID := userIDForCookies(t, h, cookies)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/bilibili/login/qrcode/create", nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), "qr-key") || !strings.Contains(w.Body.String(), "https://passport.bilibili.com/qrcode") {
+		t.Fatalf("unexpected qrcode create response: %s", w.Body.String())
+	}
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/bilibili/login/qrcode/poll", map[string]any{"qrcodeKey": "qr-key"})
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), "confirmed") {
+		t.Fatalf("expected confirmed poll response, got %s", w.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/bilibili/account", nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), `"bound":true`) || !strings.Contains(w.Body.String(), `"mid":"123456"`) {
+		t.Fatalf("unexpected account response: %s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "session-value") || strings.Contains(w.Body.String(), "refresh-token") {
+		t.Fatalf("account response leaked secret: %s", w.Body.String())
+	}
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/me/qr/source/set", map[string]any{"source": "bilibili_generated"})
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/user/qr?userId="+userID, nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("generated qr status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "image/png") {
+		t.Fatalf("generated qr content type = %q, want image/png", ct)
+	}
+	if !bytes.HasPrefix(w.Body.Bytes(), []byte{0x89, 'P', 'N', 'G'}) {
+		t.Fatalf("generated qr has invalid png header: %x", w.Body.Bytes()[:4])
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/bilibili/account/unbind", nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/bilibili/account", nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), `"bound":false`) {
+		t.Fatalf("expected unbound account response, got %s", w.Body.String())
 	}
 }
 
@@ -942,6 +1048,52 @@ func validJPEG(t *testing.T) []byte {
 		t.Fatalf("encode jpeg: %v", err)
 	}
 	return buf.Bytes()
+}
+
+func newBilibiliLoginTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/x/passport-login/web/qrcode/generate":
+			writeJSON(w, http.StatusOK, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"url":        "https://passport.bilibili.com/qrcode",
+					"qrcode_key": "qr-key",
+				},
+			})
+		case "/x/passport-login/web/qrcode/poll":
+			if got := r.URL.Query().Get("qrcode_key"); got != "qr-key" {
+				t.Fatalf("qrcode_key = %q, want qr-key", got)
+			}
+			http.SetCookie(w, &http.Cookie{Name: "SESSDATA", Value: "session-value", Path: "/", HttpOnly: true})
+			writeJSON(w, http.StatusOK, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"code":          0,
+					"message":       "confirmed",
+					"refresh_token": "refresh-token",
+				},
+			})
+		case "/x/web-interface/nav":
+			if got := r.Header.Get("Cookie"); !strings.Contains(got, "SESSDATA=session-value") {
+				t.Fatalf("cookie header = %q", got)
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"isLogin": true,
+					"mid":     123456,
+					"uname":   "bws-user",
+					"face":    "https://example.com/face.png",
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
 }
 
 func newOIDCTestProvider(t *testing.T) *httptest.Server {
