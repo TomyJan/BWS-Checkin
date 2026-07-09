@@ -2,9 +2,29 @@ package store
 
 import (
 	"errors"
+	"regexp"
 	"testing"
 	"time"
+
+	"bws-checkin/backend/internal/domain"
 )
+
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+func TestUserIDIsUUIDString(t *testing.T) {
+	s := newTestStore(t)
+	user := mustCreateUser(t, s, "oidc-user", "User")
+	if !uuidPattern.MatchString(user.ID) {
+		t.Fatalf("user ID = %q, want UUID string", user.ID)
+	}
+	loaded, err := s.UserByID(t.Context(), user.ID)
+	if err != nil {
+		t.Fatalf("load user by UUID: %v", err)
+	}
+	if loaded.ID != user.ID {
+		t.Fatalf("loaded ID = %q, want %q", loaded.ID, user.ID)
+	}
+}
 
 func TestCreateGroupRejectsDuplicateID(t *testing.T) {
 	s := newTestStore(t)
@@ -81,7 +101,7 @@ func TestSyncTaskCompletionKeepsNewestState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("group tasks: %v", err)
 	}
-	if !tasks[0].Members[1].Completed {
+	if !memberCompletion(t, tasks[0], member.ID).Completed {
 		t.Fatal("older offline state overwrote newer completion")
 	}
 
@@ -94,7 +114,7 @@ func TestSyncTaskCompletionKeepsNewestState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("group tasks after uncomplete: %v", err)
 	}
-	if tasks[0].Members[1].Completed {
+	if memberCompletion(t, tasks[0], member.ID).Completed {
 		t.Fatal("newer uncomplete state did not win")
 	}
 	if tasks[0].CompletedCount != 0 {
@@ -182,11 +202,22 @@ func mustCreateUser(t *testing.T, s *Store, subject, name string) User {
 	return user
 }
 
-func mustCreateGroup(t *testing.T, s *Store, id string, ownerID int64) {
+func mustCreateGroup(t *testing.T, s *Store, id string, ownerID string) {
 	t.Helper()
 	if err := s.CreateGroup(t.Context(), CreateGroupInput{
 		ID: id, Name: "BW2026 周五", Day: "friday", OwnerUserID: ownerID,
 	}); err != nil {
 		t.Fatalf("create group: %v", err)
 	}
+}
+
+func memberCompletion(t *testing.T, task domain.TaskStatus, userID string) domain.MemberCompletion {
+	t.Helper()
+	for _, entry := range task.Members {
+		if entry.Member.ID == userID {
+			return entry
+		}
+	}
+	t.Fatalf("member %s not found", userID)
+	return domain.MemberCompletion{}
 }

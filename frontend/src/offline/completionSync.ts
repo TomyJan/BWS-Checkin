@@ -5,7 +5,7 @@ export interface PendingCompletion {
   id: string;
   groupId: string;
   taskId: string;
-  userId: number;
+  userId: string;
   completed: boolean;
   updatedAt: string;
 }

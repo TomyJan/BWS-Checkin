@@ -4,18 +4,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 )
 
 type Local struct {
 	Dir string
 }
 
-func (l Local) SaveQR(userID int64, ext string, src io.Reader) (string, error) {
+func (l Local) SaveQR(userID string, ext string, src io.Reader) (string, error) {
 	if err := os.MkdirAll(l.Dir, 0755); err != nil {
 		return "", err
 	}
-	name := strconv.FormatInt(userID, 10) + ext
+	name := userID + ext
 	path := filepath.Join(l.Dir, name)
 	dst, err := os.Create(path)
 	if err != nil {

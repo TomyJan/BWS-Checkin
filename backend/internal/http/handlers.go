@@ -239,7 +239,7 @@ func (h Handler) updateGroup(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "group_update_failed", err.Error())
 		return
 	}
-	h.audit(r, user.ID, "group.update", input.GroupID, 0, "")
+	h.audit(r, user.ID, "group.update", input.GroupID, "", "")
 	group, err := h.deps.Store.GroupByID(r.Context(), input.GroupID, user.ID)
 	if err != nil {
 		writeNotFoundOrForbidden(w, err)
@@ -277,7 +277,7 @@ func (h Handler) setGroupJoinLocked(w http.ResponseWriter, r *http.Request, lock
 	if locked {
 		action = "group.join_lock"
 	}
-	h.audit(r, user.ID, action, input.GroupID, 0, "")
+	h.audit(r, user.ID, action, input.GroupID, "", "")
 	group, err := h.deps.Store.GroupByID(r.Context(), input.GroupID, user.ID)
 	if err != nil {
 		writeNotFoundOrForbidden(w, err)
@@ -303,7 +303,7 @@ func (h Handler) archiveGroup(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "group_archive_failed", err.Error())
 		return
 	}
-	h.audit(r, user.ID, "group.archive", input.GroupID, 0, "")
+	h.audit(r, user.ID, "group.archive", input.GroupID, "", "")
 	group, err := h.deps.Store.GroupByID(r.Context(), input.GroupID, user.ID)
 	if err != nil {
 		writeNotFoundOrForbidden(w, err)
@@ -488,7 +488,7 @@ func (h Handler) currentUser(w http.ResponseWriter, r *http.Request) (domain.Use
 	return user, true
 }
 
-func (h Handler) requireOwner(w http.ResponseWriter, r *http.Request, groupID string, userID int64) bool {
+func (h Handler) requireOwner(w http.ResponseWriter, r *http.Request, groupID string, userID string) bool {
 	owner, err := h.deps.Store.IsOwner(r.Context(), groupID, userID)
 	if err != nil {
 		writeBusinessError(w, "owner_check_failed", err.Error())
@@ -501,7 +501,7 @@ func (h Handler) requireOwner(w http.ResponseWriter, r *http.Request, groupID st
 	return true
 }
 
-func (h Handler) audit(r *http.Request, actorUserID int64, action string, groupID string, targetUserID int64, taskID string) {
+func (h Handler) audit(r *http.Request, actorUserID string, action string, groupID string, targetUserID string, taskID string) {
 	_ = h.deps.Store.AppendAuditLog(r.Context(), store.AuditLogInput{
 		ActorUserID:  actorUserID,
 		Action:       action,
@@ -551,13 +551,13 @@ type groupIDRequest struct {
 
 type memberActionRequest struct {
 	GroupID string `json:"groupId"`
-	UserID  int64  `json:"userId"`
+	UserID  string `json:"userId"`
 }
 
 type taskCompletionRequest struct {
 	GroupID   string     `json:"groupId"`
 	TaskID    string     `json:"taskId"`
-	UserID    int64      `json:"userId"`
+	UserID    string     `json:"userId"`
 	UpdatedAt *time.Time `json:"updatedAt"`
 }
 

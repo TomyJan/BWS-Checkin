@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT PRIMARY KEY,
   oidc_subject TEXT NOT NULL UNIQUE,
   display_name TEXT NOT NULL,
   avatar_url TEXT NOT NULL DEFAULT '',
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS groups (
   name TEXT NOT NULL,
   day TEXT NOT NULL CHECK (day IN ('friday', 'saturday', 'sunday')),
   description TEXT NOT NULL DEFAULT '',
-  owner_user_id INTEGER NOT NULL REFERENCES users(id),
+  owner_user_id TEXT NOT NULL REFERENCES users(id),
   join_locked INTEGER NOT NULL DEFAULT 0,
   archived_at TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS groups (
 
 CREATE TABLE IF NOT EXISTS group_members (
   group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('owner', 'member')),
   joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (group_id, user_id)
@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS task_completions (
   group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   task_id TEXT NOT NULL REFERENCES tasks(id),
-  target_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  checked_by_user_id INTEGER NOT NULL REFERENCES users(id),
+  target_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  checked_by_user_id TEXT NOT NULL REFERENCES users(id),
   completed INTEGER NOT NULL DEFAULT 1,
   completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -48,10 +48,10 @@ CREATE TABLE IF NOT EXISTS task_completions (
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  actor_user_id INTEGER NOT NULL REFERENCES users(id),
+  actor_user_id TEXT NOT NULL REFERENCES users(id),
   action TEXT NOT NULL,
   group_id TEXT NOT NULL DEFAULT '',
-  target_user_id INTEGER,
+  target_user_id TEXT,
   task_id TEXT NOT NULL DEFAULT '',
   metadata TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP

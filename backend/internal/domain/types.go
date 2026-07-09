@@ -3,7 +3,7 @@ package domain
 import "time"
 
 type User struct {
-	ID          int64  `json:"id"`
+	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
 	AvatarURL   string `json:"avatarUrl"`
 	QRImageURL  string `json:"qrImageUrl"`
@@ -22,7 +22,7 @@ type Group struct {
 }
 
 type Member struct {
-	ID          int64  `json:"id"`
+	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
 	QRImageURL  string `json:"qrImageUrl"`
 }
@@ -41,6 +41,6 @@ type MemberCompletion struct {
 	Completed     bool       `json:"completed"`
 	CompletedAt   *time.Time `json:"completedAt"`
 	UpdatedAt     *time.Time `json:"updatedAt"`
-	CheckedByID   *int64     `json:"checkedById"`
+	CheckedByID   *string    `json:"checkedById"`
 	CheckedByName string     `json:"checkedByName"`
 }

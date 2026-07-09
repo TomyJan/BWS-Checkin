@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
@@ -18,7 +17,7 @@ type SessionConfig struct {
 	MaxAge   int
 }
 
-func (h Handler) setSession(w http.ResponseWriter, userID int64) {
+func (h Handler) setSession(w http.ResponseWriter, userID string) {
 	cfg := h.sessionConfig()
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -44,10 +43,10 @@ func (h Handler) clearSession(w http.ResponseWriter) {
 	})
 }
 
-func (h Handler) sessionUserID(r *http.Request) (int64, bool) {
+func (h Handler) sessionUserID(r *http.Request) (string, bool) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
-		return 0, false
+		return "", false
 	}
 	return parseSignedSessionValue(cookie.Value, h.sessionConfig().Secret)
 }
@@ -63,21 +62,19 @@ func (h Handler) sessionConfig() SessionConfig {
 	return cfg
 }
 
-func signedSessionValue(userID int64, secret string) string {
-	id := strconv.FormatInt(userID, 10)
-	return id + "." + signSessionID(id, secret)
+func signedSessionValue(userID string, secret string) string {
+	return userID + "." + signSessionID(userID, secret)
 }
 
-func parseSignedSessionValue(value string, secret string) (int64, bool) {
+func parseSignedSessionValue(value string, secret string) (string, bool) {
 	id, signature, ok := strings.Cut(value, ".")
 	if !ok || id == "" || signature == "" {
-		return 0, false
+		return "", false
 	}
 	if !hmac.Equal([]byte(signature), []byte(signSessionID(id, secret))) {
-		return 0, false
+		return "", false
 	}
-	parsed, err := strconv.ParseInt(id, 10, 64)
-	return parsed, err == nil
+	return id, true
 }
 
 func signSessionID(id string, secret string) string {

@@ -533,6 +533,7 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 	uploadDir := t.TempDir()
 	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: uploadDir})
 	cookies := loginForTest(t, h, "TomyJan")
+	userID := userIDForCookies(t, h, cookies)
 
 	req := multipartRequest(t, "/api/v1/me/qr/upload", "qr.png", validPNG(t))
 	for _, c := range cookies {
@@ -558,7 +559,7 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "/uploads/") {
 		t.Fatalf("expected qrImageUrl in response, got %s", w.Body.String())
 	}
-	if _, err := os.Stat(filepath.Join(uploadDir, "1.png")); err != nil {
+	if _, err := os.Stat(filepath.Join(uploadDir, userID+".png")); err != nil {
 		t.Fatalf("expected uploaded file to exist: %v", err)
 	}
 
@@ -572,10 +573,10 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 		t.Fatalf("replace upload status = %d, body = %s", w.Code, w.Body.String())
 	}
 	assertOK(t, w)
-	if _, err := os.Stat(filepath.Join(uploadDir, "1.png")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(uploadDir, userID+".png")); !os.IsNotExist(err) {
 		t.Fatalf("expected old png to be removed after replacement, stat err = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(uploadDir, "1.jpg")); err != nil {
+	if _, err := os.Stat(filepath.Join(uploadDir, userID+".jpg")); err != nil {
 		t.Fatalf("expected replacement jpg to exist: %v", err)
 	}
 
@@ -589,7 +590,7 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 		t.Fatalf("delete status = %d, body = %s", w.Code, w.Body.String())
 	}
 	assertOK(t, w)
-	if _, err := os.Stat(filepath.Join(uploadDir, "1.jpg")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(uploadDir, userID+".jpg")); !os.IsNotExist(err) {
 		t.Fatalf("expected uploaded file to be removed, stat err = %v", err)
 	}
 
@@ -650,7 +651,7 @@ type taskResponseItem struct {
 	TotalCount int `json:"totalCount"`
 	Members    []struct {
 		Member struct {
-			ID int64 `json:"id"`
+			ID string `json:"id"`
 		} `json:"member"`
 	} `json:"members"`
 }
@@ -672,7 +673,7 @@ func decodeTasks(t *testing.T, w *httptest.ResponseRecorder) []taskResponseItem 
 	return body.Data.Tasks
 }
 
-func userIDForCookies(t *testing.T, h http.Handler, cookies []*http.Cookie) int64 {
+func userIDForCookies(t *testing.T, h http.Handler, cookies []*http.Cookie) string {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	for _, c := range cookies {
@@ -687,7 +688,7 @@ func userIDForCookies(t *testing.T, h http.Handler, cookies []*http.Cookie) int6
 		OK   bool `json:"ok"`
 		Data struct {
 			User struct {
-				ID int64 `json:"id"`
+				ID string `json:"id"`
 			} `json:"user"`
 		} `json:"data"`
 	}

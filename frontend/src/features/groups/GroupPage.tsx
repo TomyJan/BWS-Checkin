@@ -142,7 +142,7 @@ export function GroupPage() {
   });
 
   const removeMember = useMutation({
-    mutationFn: async (userId: number) => {
+    mutationFn: async (userId: string) => {
       await api<{ ok: boolean }>("/group/member/remove", {
         method: "POST",
         body: JSON.stringify({ groupId, userId })
@@ -216,7 +216,7 @@ export function GroupPage() {
     });
   }
 
-  function advanceToNextIncomplete(completedUserId: number) {
+  function advanceToNextIncomplete(completedUserId: string) {
     const latest = queryClient.getQueryData<TasksResponse>(["groupTasks", groupId])?.tasks ?? tasks;
     const task = latest.find((item) => item.id === currentTask?.id);
     const latestMembers = task?.members ?? [];
@@ -519,5 +519,5 @@ function formatTime(value: string | null) {
 }
 
 function currentUser(user?: User): User {
-  return user ?? { id: 0, displayName: "本机", avatarUrl: "", qrImageUrl: "" };
+  return user ?? { id: "", displayName: "本机", avatarUrl: "", qrImageUrl: "" };
 }

@@ -1,5 +1,5 @@
 export interface User {
-  id: number;
+  id: string;
   displayName: string;
   avatarUrl: string;
   qrImageUrl: string;
@@ -26,7 +26,7 @@ export interface GroupsResponse {
 }
 
 export interface Member {
-  id: number;
+  id: string;
   displayName: string;
   qrImageUrl: string;
 }
@@ -36,7 +36,7 @@ export interface MemberCompletion {
   completed: boolean;
   completedAt: string | null;
   updatedAt: string | null;
-  checkedById: number | null;
+  checkedById: string | null;
   checkedByName: string;
 }
 

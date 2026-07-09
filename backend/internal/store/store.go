@@ -2,9 +2,11 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"embed"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -32,7 +34,7 @@ type CreateGroupInput struct {
 	Name        string
 	Day         string
 	Description string
-	OwnerUserID int64
+	OwnerUserID string
 }
 
 type UpdateGroupInput struct {
@@ -43,20 +45,20 @@ type UpdateGroupInput struct {
 }
 
 type AuditLogInput struct {
-	ActorUserID  int64
+	ActorUserID  string
 	Action       string
 	GroupID      string
-	TargetUserID int64
+	TargetUserID string
 	TaskID       string
 	Metadata     string
 }
 
 type AuditLog struct {
 	ID           int64
-	ActorUserID  int64
+	ActorUserID  string
 	Action       string
 	GroupID      string
-	TargetUserID int64
+	TargetUserID string
 	TaskID       string
 	Metadata     string
 	CreatedAt    string
@@ -65,8 +67,8 @@ type AuditLog struct {
 type SyncTaskCompletionInput struct {
 	GroupID         string
 	TaskID          string
-	TargetUserID    int64
-	CheckedByUserID int64
+	TargetUserID    string
+	CheckedByUserID string
 	Completed       bool
 	UpdatedAt       time.Time
 }
@@ -127,10 +129,10 @@ func (s *Store) migrate() error {
 	if _, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS audit_logs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			actor_user_id INTEGER NOT NULL REFERENCES users(id),
+			actor_user_id TEXT NOT NULL REFERENCES users(id),
 			action TEXT NOT NULL,
 			group_id TEXT NOT NULL DEFAULT '',
-			target_user_id INTEGER,
+			target_user_id TEXT,
 			task_id TEXT NOT NULL DEFAULT '',
 			metadata TEXT NOT NULL DEFAULT '{}',
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -178,10 +180,10 @@ func (s *Store) UpsertUser(ctx context.Context, subject, displayName string) (do
 		return domain.User{}, errors.New("subject and display name are required")
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO users (oidc_subject, display_name)
-		VALUES (?, ?)
+		INSERT INTO users (id, oidc_subject, display_name)
+		VALUES (?, ?, ?)
 		ON CONFLICT(oidc_subject) DO UPDATE SET display_name = excluded.display_name, updated_at = CURRENT_TIMESTAMP
-	`, subject, displayName)
+	`, newUUID(), subject, displayName)
 	if err != nil {
 		return domain.User{}, err
 	}
@@ -196,7 +198,7 @@ func (s *Store) UserBySubject(ctx context.Context, subject string) (domain.User,
 	`, subject))
 }
 
-func (s *Store) UserByID(ctx context.Context, id int64) (domain.User, error) {
+func (s *Store) UserByID(ctx context.Context, id string) (domain.User, error) {
 	return scanUser(s.db.QueryRowContext(ctx, `
 		SELECT id, display_name, avatar_url, qr_image_path
 		FROM users
@@ -204,7 +206,7 @@ func (s *Store) UserByID(ctx context.Context, id int64) (domain.User, error) {
 	`, id))
 }
 
-func (s *Store) UpdateUserQR(ctx context.Context, userID int64, path string) error {
+func (s *Store) UpdateUserQR(ctx context.Context, userID string, path string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE users
 		SET qr_image_path = ?, updated_at = CURRENT_TIMESTAMP
@@ -237,7 +239,7 @@ func (s *Store) CreateGroup(ctx context.Context, input CreateGroupInput) error {
 	return tx.Commit()
 }
 
-func (s *Store) JoinGroup(ctx context.Context, groupID string, userID int64) error {
+func (s *Store) JoinGroup(ctx context.Context, groupID string, userID string) error {
 	joinLocked, archived, err := s.groupFlags(ctx, groupID)
 	if err != nil {
 		return err
@@ -255,7 +257,7 @@ func (s *Store) JoinGroup(ctx context.Context, groupID string, userID int64) err
 	return err
 }
 
-func (s *Store) UserGroups(ctx context.Context, userID int64, includeArchived bool) ([]domain.Group, error) {
+func (s *Store) UserGroups(ctx context.Context, userID string, includeArchived bool) ([]domain.Group, error) {
 	archiveFilter := "AND g.archived_at = ''"
 	if includeArchived {
 		archiveFilter = ""
@@ -299,7 +301,7 @@ func (s *Store) UserGroups(ctx context.Context, userID int64, includeArchived bo
 	return groups, rows.Err()
 }
 
-func (s *Store) GroupByID(ctx context.Context, groupID string, userID int64) (domain.Group, error) {
+func (s *Store) GroupByID(ctx context.Context, groupID string, userID string) (domain.Group, error) {
 	var group domain.Group
 	var joinLocked int
 	var archivedAt string
@@ -362,20 +364,16 @@ func (s *Store) AppendAuditLog(ctx context.Context, input AuditLogInput) error {
 	if metadata == "" {
 		metadata = "{}"
 	}
-	var target any
-	if input.TargetUserID != 0 {
-		target = input.TargetUserID
-	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO audit_logs (actor_user_id, action, group_id, target_user_id, task_id, metadata)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, input.ActorUserID, input.Action, input.GroupID, target, input.TaskID, metadata)
+	`, input.ActorUserID, input.Action, input.GroupID, nullString(input.TargetUserID), input.TaskID, metadata)
 	return err
 }
 
 func (s *Store) AuditLogs(ctx context.Context) ([]AuditLog, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, actor_user_id, action, group_id, COALESCE(target_user_id, 0), task_id, metadata, created_at
+		SELECT id, actor_user_id, action, group_id, COALESCE(target_user_id, ''), task_id, metadata, created_at
 		FROM audit_logs
 		ORDER BY id ASC
 	`)
@@ -403,7 +401,7 @@ func (s *Store) AuditLogs(ctx context.Context) ([]AuditLog, error) {
 	return logs, rows.Err()
 }
 
-func (s *Store) IsOwner(ctx context.Context, groupID string, userID int64) (bool, error) {
+func (s *Store) IsOwner(ctx context.Context, groupID string, userID string) (bool, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
@@ -413,7 +411,7 @@ func (s *Store) IsOwner(ctx context.Context, groupID string, userID int64) (bool
 	return count > 0, err
 }
 
-func (s *Store) RemoveMember(ctx context.Context, groupID string, userID int64) error {
+func (s *Store) RemoveMember(ctx context.Context, groupID string, userID string) error {
 	_, err := s.db.ExecContext(ctx, `
 		DELETE FROM group_members
 		WHERE group_id = ? AND user_id = ? AND role != 'owner'
@@ -452,7 +450,7 @@ func (s *Store) GroupTasks(ctx context.Context, groupID string) ([]domain.TaskSt
 	return tasks, nil
 }
 
-func (s *Store) MarkComplete(ctx context.Context, groupID string, taskID string, targetUserID int64, checkedByUserID int64) error {
+func (s *Store) MarkComplete(ctx context.Context, groupID string, taskID string, targetUserID string, checkedByUserID string) error {
 	return s.SyncTaskCompletion(ctx, SyncTaskCompletionInput{
 		GroupID:         groupID,
 		TaskID:          taskID,
@@ -463,7 +461,7 @@ func (s *Store) MarkComplete(ctx context.Context, groupID string, taskID string,
 	})
 }
 
-func (s *Store) UnmarkComplete(ctx context.Context, groupID string, taskID string, targetUserID int64) error {
+func (s *Store) UnmarkComplete(ctx context.Context, groupID string, taskID string, targetUserID string) error {
 	return s.SyncTaskCompletion(ctx, SyncTaskCompletionInput{
 		GroupID:         groupID,
 		TaskID:          taskID,
@@ -575,7 +573,7 @@ func (s *Store) enabledTasks(ctx context.Context) ([]domain.TaskStatus, error) {
 
 type completionKey struct {
 	TaskID string
-	UserID int64
+	UserID string
 }
 
 func (s *Store) completions(ctx context.Context, groupID string) (map[completionKey]domain.MemberCompletion, error) {
@@ -593,8 +591,8 @@ func (s *Store) completions(ctx context.Context, groupID string) (map[completion
 	result := make(map[completionKey]domain.MemberCompletion)
 	for rows.Next() {
 		var taskID string
-		var targetUserID int64
-		var checkedByID int64
+		var targetUserID string
+		var checkedByID string
 		var checkedByName string
 		var completed int
 		var completedAtRaw string
@@ -629,4 +627,21 @@ func parseOptionalTime(value string) *time.Time {
 		return nil
 	}
 	return parseSQLiteTime(value)
+}
+
+func newUUID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+func nullString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
