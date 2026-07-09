@@ -336,17 +336,19 @@ export function GroupPage() {
   return (
     <Box
       className={`qr-viewer ${uiVisible ? "ui-visible" : "ui-hidden"}`}
-      onClick={() => {
-        if (suppressNextToggle.current) {
-          suppressNextToggle.current = false;
-          return;
-        }
-        setUiVisible((visible) => !visible);
-      }}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
     >
-      <Box className="qr-photo-stage">
+      <Box
+        className="qr-photo-stage"
+        onClick={() => {
+          if (suppressNextToggle.current) {
+            suppressNextToggle.current = false;
+            return;
+          }
+          setUiVisible((visible) => !visible);
+        }}
+      >
         {currentMember?.member.qrImageUrl ? (
           <img className="qr-photo-img" src={currentMember.member.qrImageUrl} alt={`${currentMember.member.displayName} 的二维码`} />
         ) : (
@@ -368,9 +370,6 @@ export function GroupPage() {
             <Box>
               <Typography variant="h5" sx={{ fontWeight: 850 }}>
                 {currentGroup?.name}
-              </Typography>
-              <Typography sx={{ color: "rgba(255,255,255,.72)", fontSize: 13 }}>
-                正在查看 {currentMember?.member.displayName ?? "-"} 的二维码
               </Typography>
             </Box>
           </Stack>

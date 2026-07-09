@@ -1,5 +1,9 @@
 import {
+  Alert,
+  AppBar,
+  Avatar,
   Box,
+  Button,
   Card,
   CardActionArea,
   CardContent,
@@ -16,14 +20,13 @@ import {
   Tooltip,
   Typography
 } from "@mui/material";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Group, GroupsResponse, MeResponse } from "../../api/types";
-import { AddIcon, CloudUploadIcon, DeleteIcon, GroupsIcon } from "../../icons";
+import { AddIcon, GroupsIcon } from "../../icons";
 import { CreateGroupDialog, JoinGroupDialog } from "../groups/GroupDialogs";
-import { QRCodeUpload } from "../profile/QRCodeUpload";
 
 const dayLabel: Record<string, string> = {
   friday: "周五",
@@ -33,7 +36,6 @@ const dayLabel: Record<string, string> = {
 
 export function HomePage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -50,21 +52,39 @@ export function HomePage() {
     navigate(`/groups/${group.id}`);
   }
 
-  async function uploadQR(file: File) {
-    const form = new FormData();
-    form.append("file", file);
-    await api("/me/qr/upload", { method: "POST", body: form });
-    await queryClient.invalidateQueries({ queryKey: ["me"] });
-  }
-
-  async function deleteQR() {
-    setMenuAnchor(null);
-    await api("/me/qr/delete", { method: "POST" });
-    await queryClient.invalidateQueries({ queryKey: ["me"] });
-  }
-
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "background.default", py: { xs: 2, md: 4 } }}>
+    <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+      <AppBar position="sticky" color="inherit" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
+        <Container maxWidth="md">
+          <Stack direction="row" sx={{ minHeight: 64, alignItems: "center", justifyContent: "space-between", gap: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 850 }}>
+              我的互助组
+            </Typography>
+            <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
+              <Button
+                color="inherit"
+                onClick={() => navigate("/profile")}
+                startIcon={<Avatar src={me.data?.user.avatarUrl} sx={{ width: 28, height: 28 }}>{me.data?.user.displayName?.[0]}</Avatar>}
+                sx={{ borderRadius: 999, textTransform: "none" }}
+              >
+                {me.data?.user.displayName ?? "我"}
+              </Button>
+              <Tooltip title="创建或加入互助组">
+                <IconButton
+                  aria-label="创建或加入互助组"
+                  color="primary"
+                  size="large"
+                  sx={{ bgcolor: "primary.main", color: "primary.contrastText", borderRadius: 5 }}
+                  onClick={(event) => setMenuAnchor(event.currentTarget)}
+                >
+                  <AddIcon />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          </Stack>
+        </Container>
+      </AppBar>
+      <Box sx={{ py: { xs: 2, md: 4 } }}>
       <Container maxWidth="md">
         <Stack spacing={3}>
           <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2 }}>
@@ -76,19 +96,20 @@ export function HomePage() {
                 邀请码就是互助组 ID。创建组时选择活动日期。
               </Typography>
             </Box>
-            <Tooltip title="创建或加入互助组">
-              <IconButton
-                color="primary"
-                size="large"
-                sx={{ bgcolor: "primary.main", color: "primary.contrastText", borderRadius: 5 }}
-                onClick={(event) => setMenuAnchor(event.currentTarget)}
-              >
-                <AddIcon />
-              </IconButton>
-            </Tooltip>
           </Stack>
 
-          {!me.data?.user.qrImageUrl && <QRCodeUpload />}
+          {!me.data?.user.qrImageUrl && (
+            <Alert
+              severity="warning"
+              action={
+                <Button color="inherit" size="small" onClick={() => navigate("/profile")}>
+                  去上传
+                </Button>
+              }
+            >
+              请先上传二维码，互助组成员才能帮你打卡。
+            </Alert>
+          )}
 
           <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
             <MenuItem
@@ -113,32 +134,6 @@ export function HomePage() {
               </ListItemIcon>
               <ListItemText>加入互助组</ListItemText>
             </MenuItem>
-            {me.data?.user.qrImageUrl && (
-              <MenuItem component="label">
-                <ListItemIcon>
-                  <CloudUploadIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText>更新二维码</ListItemText>
-                <input
-                  hidden
-                  accept="image/png,image/jpeg,image/webp"
-                  type="file"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    setMenuAnchor(null);
-                    if (file) void uploadQR(file);
-                  }}
-                />
-              </MenuItem>
-            )}
-            {me.data?.user.qrImageUrl && (
-              <MenuItem onClick={() => void deleteQR()}>
-                <ListItemIcon>
-                  <DeleteIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText>删除二维码</ListItemText>
-              </MenuItem>
-            )}
           </Menu>
 
           <Stack direction="row" sx={{ justifyContent: "flex-end" }}>
@@ -189,6 +184,7 @@ export function HomePage() {
           defaultInvite={searchParams.get("invite") ?? ""}
         />
       </Container>
+      </Box>
     </Box>
   );
 }
