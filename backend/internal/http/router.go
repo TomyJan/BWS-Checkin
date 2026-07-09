@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 
+	"bws-checkin/backend/internal/frontend"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -35,5 +36,6 @@ func NewRouter(deps Deps) http.Handler {
 		r.Post("/task/complete", h.completeTask)
 		r.Post("/task/uncomplete", h.uncompleteTask)
 	})
+	r.NotFound(frontend.Handler().ServeHTTP)
 	return r
 }
