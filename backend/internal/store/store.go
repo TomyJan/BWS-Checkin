@@ -225,6 +225,20 @@ func (s *Store) migrate() error {
 		return err
 	}
 	if _, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS oauth_accounts (
+			provider_id TEXT NOT NULL,
+			provider_subject TEXT NOT NULL,
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			display_name TEXT NOT NULL DEFAULT '',
+			avatar_url TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (provider_id, provider_subject)
+		)
+	`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS task_sync_state (
 			id TEXT PRIMARY KEY,
 			last_success_at TEXT NOT NULL DEFAULT '',
@@ -492,6 +506,85 @@ func (s *Store) UserByID(ctx context.Context, id string) (domain.User, error) {
 		FROM users
 		WHERE id = ?
 	`, id))
+}
+
+func (s *Store) LinkOAuthAccount(ctx context.Context, account domain.OAuthAccount) error {
+	if account.ProviderID == "" || account.Subject == "" || account.UserID == "" {
+		return errors.New("provider id, subject and user id are required")
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO oauth_accounts (
+			provider_id, provider_subject, user_id, display_name, avatar_url
+		)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(provider_id, provider_subject) DO UPDATE SET
+			user_id = excluded.user_id,
+			display_name = excluded.display_name,
+			avatar_url = excluded.avatar_url,
+			updated_at = CURRENT_TIMESTAMP
+	`, account.ProviderID, account.Subject, account.UserID, account.DisplayName, account.AvatarURL)
+	return err
+}
+
+func (s *Store) OAuthAccountByProviderSubject(ctx context.Context, providerID string, subject string) (domain.OAuthAccount, error) {
+	var account domain.OAuthAccount
+	var createdAt string
+	var updatedAt string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT provider_id, provider_subject, user_id, display_name, avatar_url, created_at, updated_at
+		FROM oauth_accounts
+		WHERE provider_id = ? AND provider_subject = ?
+	`, providerID, subject).Scan(
+		&account.ProviderID,
+		&account.Subject,
+		&account.UserID,
+		&account.DisplayName,
+		&account.AvatarURL,
+		&createdAt,
+		&updatedAt,
+	)
+	if err != nil {
+		return domain.OAuthAccount{}, err
+	}
+	account.ProviderName = account.ProviderID
+	account.CreatedAt = parseOptionalTime(createdAt)
+	account.UpdatedAt = parseOptionalTime(updatedAt)
+	return account, nil
+}
+
+func (s *Store) UserOAuthAccounts(ctx context.Context, userID string) ([]domain.OAuthAccount, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT provider_id, provider_subject, user_id, display_name, avatar_url, created_at, updated_at
+		FROM oauth_accounts
+		WHERE user_id = ?
+		ORDER BY provider_id ASC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var accounts []domain.OAuthAccount
+	for rows.Next() {
+		var account domain.OAuthAccount
+		var createdAt string
+		var updatedAt string
+		if err := rows.Scan(
+			&account.ProviderID,
+			&account.Subject,
+			&account.UserID,
+			&account.DisplayName,
+			&account.AvatarURL,
+			&createdAt,
+			&updatedAt,
+		); err != nil {
+			return nil, err
+		}
+		account.ProviderName = account.ProviderID
+		account.CreatedAt = parseOptionalTime(createdAt)
+		account.UpdatedAt = parseOptionalTime(updatedAt)
+		accounts = append(accounts, account)
+	}
+	return accounts, rows.Err()
 }
 
 func (s *Store) UpdateUserQR(ctx context.Context, userID string, path string) error {

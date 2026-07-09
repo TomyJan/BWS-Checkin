@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-BWS Checkin 是 BW 乐园互助打卡网站。用户通过 OIDC 登录，上传自己的二维码，加入互助组后，即可在一个打卡点位为整组成员依次完成打卡记录。
+BWS Checkin 是 BW 乐园互助打卡网站。用户通过已配置的 OAuth 渠道登录，上传自己的二维码，加入互助组后，即可在一个打卡点位为整组成员依次完成打卡记录。
 
 当前优先目标是轻量 MVP：开发期前后端分离、发布期单 Go 二进制内嵌前端、Go 后端、React 前端、SQLite、本地二维码文件存储、PWA 离线可用。
 
@@ -91,7 +91,7 @@ BWS Checkin 当前技术栈固定为：
 - 服务端状态：TanStack Query。
 - PWA：Web App Manifest、Service Worker、Cache Storage。
 - 本地开发鉴权：mock login。
-- 生产鉴权：只接入 OIDC。
+- 生产鉴权：可配置多个 OAuth provider，当前支持 OIDC 和 QQ OAuth。
 - 二维码存储：MVP 使用本地目录；不要在未明确要求时扩展对象存储。
 - CI：GitHub Actions `Check Code` 工作流。
 - Release：GitHub Actions 支持 tag 和手动触发，构建 Linux x64 与 Windows x64 二进制。
@@ -106,7 +106,7 @@ BWS Checkin 当前技术栈固定为：
 - 未登录或登录态无效使用 HTTP `401`，用于前端进入登录流程。
 - 业务错误码使用稳定字符串，例如 `group_id_conflict`、`group_access_denied`、`owner_role_required`。
 - 后端 Session 使用 HTTP-only Cookie；不要引入 JWT 作为主登录会话。
-- 生产环境强制使用 OIDC；本地开发使用 mock login 即可。
+- 生产环境强制使用已配置 OAuth provider；本地开发使用 mock login 即可。
 - 系统内部 ID（例如用户 ID、成员 ID）使用 UUID 字符串，不使用自增整数。
 - SQLite schema 暂由 `backend/internal/store/schema.sql` 管理；修改表结构时必须考虑已有本地数据库的兼容迁移。
 - 前端必须通过 `frontend/src/api/client.ts` 统一访问 API，不要在组件中散落重复 fetch envelope 解析。
@@ -117,7 +117,7 @@ BWS Checkin 当前技术栈固定为：
 - 最终发布产物是单个 Go 二进制，必须内嵌前端 `dist` 文件。
 - 发布构建顺序是：安装前端依赖，执行 `pnpm build`，复制 `frontend/dist` 到 `backend/internal/frontend/dist`，再编译后端。
 - 不需要为前端补充独立静态托管或反向代理配置。
-- 后端处理 `/api/v1/*`、`/auth/oidc/*` 和 `/healthz`。
+- 后端处理 `/api/v1/*`、`/auth/oauth/*`、`/auth/oidc/*` 和 `/healthz`。
 - 除上述后端路径外，其他路径全部交给内嵌前端，支持 SPA 刷新和邀请链接直达。
 - 本地开发仍保留前后端分离：Vite dev server 通过 proxy 转发 `/api` 和 `/auth`。
 
@@ -139,12 +139,12 @@ GET /api/v1/user/qr?userId=<uuid>
 - 后端系统日志使用标准库 `log/slog` 输出结构化 JSON 到标准输出。
 - 启动日志应包含监听地址、数据库路径、上传目录、开发鉴权开关和关键 Cookie 配置。
 - 请求日志应包含方法、URL path、HTTP 状态码、响应字节数、耗时和来源地址。
-- 不要在日志中记录 query string、Cookie、请求体、OIDC token、Session secret 或二维码文件内容。
+- 不要在日志中记录 query string、Cookie、请求体、OAuth/OIDC token、Session secret 或二维码文件内容。
 - 业务错误返回给前端时继续使用响应体 `ok/error`，不要把业务错误混入 HTTP 状态码语义。
 
 ## 核心产品约束
 
-- 整站需要登录后访问；生产环境只使用 OIDC，本地开发可使用 mock login。
+- 整站需要登录后访问；生产环境使用已配置 OAuth provider，本地开发可使用 mock login。
 - 用户上传自己的二维码图片后，互助组成员才能帮其打卡。
 - 首页核心入口是「我的互助组」，创建和加入入口收敛在右侧加号菜单。
 - 互助组 ID 即邀请码，允许自定义，但必须全站唯一。

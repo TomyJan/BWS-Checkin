@@ -64,6 +64,29 @@ describe("ProfilePage", () => {
           })
         );
       }
+      if (url.endsWith("/api/v1/oauth/providers")) {
+        return Promise.resolve(
+          Response.json({
+            ok: true,
+            data: {
+              providers: [
+                { id: "oidc", name: "统一认证", type: "oidc" },
+                { id: "qq", name: "QQ 登录", type: "qq" }
+              ]
+            }
+          })
+        );
+      }
+      if (url.endsWith("/api/v1/oauth/accounts")) {
+        return Promise.resolve(
+          Response.json({
+            ok: true,
+            data: {
+              accounts: [{ providerId: "oidc", providerName: "统一认证", subject: "oidc-user", displayName: "TomyJan", avatarUrl: "" }]
+            }
+          })
+        );
+      }
       if (url.endsWith("/api/v1/bilibili/login/qrcode/create")) {
         return Promise.resolve(
           Response.json({
@@ -127,6 +150,10 @@ describe("ProfilePage", () => {
     ).toBeTruthy();
     expect(screen.queryByText("BiliTomy")).not.toBeInTheDocument();
     expect(screen.queryByText("账号已可用于生成二维码")).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "账号绑定" })).toBeInTheDocument();
+    expect(screen.getByText("统一认证")).toBeInTheDocument();
+    expect(screen.getByText("已绑定")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "绑定 QQ 登录" })).toHaveAttribute("href", "/auth/oauth/qq/login");
   });
 
   test("does not claim the current QR is available when the selected source has no image URL", async () => {

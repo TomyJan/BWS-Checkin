@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"strconv"
@@ -26,6 +27,20 @@ type Config struct {
 	BilibiliCookieSecret string
 	BilibiliPassportBase string
 	BilibiliAPIBase      string
+	OAuthProviders       []OAuthProviderConfig
+}
+
+type OAuthProviderConfig struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	IssuerURL    string `json:"issuerUrl"`
+	AuthURL      string `json:"authUrl"`
+	TokenURL     string `json:"tokenUrl"`
+	UserInfoURL  string `json:"userInfoUrl"`
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+	RedirectURL  string `json:"redirectUrl"`
 }
 
 func Load() Config {
@@ -35,7 +50,7 @@ func Load() Config {
 		bilibiliCookieSecret = developmentBilibiliCookieSecret
 	}
 
-	return Config{
+	cfg := Config{
 		Addr:                 env("BWS_ADDR", ":8080"),
 		DBPath:               env("BWS_DB", "data/bws.db"),
 		UploadDir:            env("BWS_UPLOAD_DIR", "data/uploads"),
@@ -54,6 +69,8 @@ func Load() Config {
 		BilibiliPassportBase: env("BWS_BILIBILI_PASSPORT_BASE", ""),
 		BilibiliAPIBase:      env("BWS_BILIBILI_API_BASE", ""),
 	}
+	cfg.OAuthProviders = loadOAuthProviders(cfg)
+	return cfg
 }
 
 func (c Config) Validate() error {
@@ -63,8 +80,38 @@ func (c Config) Validate() error {
 	if c.SessionSecret == "" {
 		return errors.New("BWS_SESSION_SECRET is required when BWS_DEV_AUTH=0")
 	}
-	if c.OIDCIssuerURL == "" || c.OIDCClientID == "" || c.OIDCClientSecret == "" {
-		return errors.New("OIDC issuer, client ID and client secret are required when BWS_DEV_AUTH=0")
+	providers := c.OAuthProviders
+	if len(providers) == 0 && (c.OIDCIssuerURL != "" || c.OIDCClientID != "" || c.OIDCClientSecret != "") {
+		providers = []OAuthProviderConfig{{
+			ID:           "oidc",
+			Name:         "OIDC 登录",
+			Type:         "oidc",
+			IssuerURL:    c.OIDCIssuerURL,
+			ClientID:     c.OIDCClientID,
+			ClientSecret: c.OIDCClientSecret,
+			RedirectURL:  c.OIDCRedirectURL,
+		}}
+		if providers[0].RedirectURL == "" && c.PublicBase != "" {
+			providers[0].RedirectURL = c.PublicBase + "/auth/oauth/oidc/callback"
+		}
+	}
+	if len(providers) == 0 {
+		return errors.New("at least one OAuth provider is required when BWS_DEV_AUTH=0")
+	}
+	for _, provider := range providers {
+		if provider.ID == "" || provider.ClientID == "" || provider.ClientSecret == "" || provider.RedirectURL == "" {
+			return errors.New("OAuth provider ID, client ID, client secret and redirect URL are required when BWS_DEV_AUTH=0")
+		}
+		switch provider.Type {
+		case "qq":
+			if provider.AuthURL == "" || provider.TokenURL == "" || provider.UserInfoURL == "" {
+				return errors.New("QQ OAuth auth URL, token URL and userinfo URL are required when BWS_DEV_AUTH=0")
+			}
+		default:
+			if provider.IssuerURL == "" {
+				return errors.New("OIDC issuer is required when BWS_DEV_AUTH=0")
+			}
+		}
 	}
 	if c.BilibiliLoginEnabled && c.BilibiliCookieSecret == "" {
 		return errors.New("BWS_BILIBILI_COOKIE_SECRET is required when Bilibili login is enabled")
@@ -77,6 +124,40 @@ func env(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func loadOAuthProviders(cfg Config) []OAuthProviderConfig {
+	var providers []OAuthProviderConfig
+	if raw := env("BWS_OAUTH_PROVIDERS", ""); raw != "" {
+		_ = json.Unmarshal([]byte(raw), &providers)
+	}
+	if cfg.OIDCIssuerURL != "" || cfg.OIDCClientID != "" || cfg.OIDCClientSecret != "" {
+		redirectURL := cfg.OIDCRedirectURL
+		if redirectURL == "" {
+			redirectURL = cfg.PublicBase + "/auth/oauth/oidc/callback"
+		}
+		providers = append(providers, OAuthProviderConfig{
+			ID:           env("BWS_OIDC_ID", "oidc"),
+			Name:         env("BWS_OIDC_NAME", "OIDC 登录"),
+			Type:         "oidc",
+			IssuerURL:    cfg.OIDCIssuerURL,
+			ClientID:     cfg.OIDCClientID,
+			ClientSecret: cfg.OIDCClientSecret,
+			RedirectURL:  redirectURL,
+		})
+	}
+	for index := range providers {
+		if providers[index].Type == "" {
+			providers[index].Type = "oidc"
+		}
+		if providers[index].Name == "" {
+			providers[index].Name = providers[index].ID
+		}
+		if providers[index].RedirectURL == "" && cfg.PublicBase != "" && providers[index].ID != "" {
+			providers[index].RedirectURL = cfg.PublicBase + "/auth/oauth/" + providers[index].ID + "/callback"
+		}
+	}
+	return providers
 }
 
 func intEnv(key string, fallback int) int {

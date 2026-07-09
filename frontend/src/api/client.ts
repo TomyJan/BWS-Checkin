@@ -2,7 +2,9 @@ import type {
   BilibiliAccountResponse,
   BilibiliLoginPollResponse,
   BilibiliLoginQRCodeResponse,
-  MeResponse
+  MeResponse,
+  OAuthAccountsResponse,
+  OAuthProvidersResponse
 } from "./types";
 
 const API_BASE = "/api/v1";
@@ -55,6 +57,14 @@ export function getMe() {
 
 export function getBilibiliAccount() {
   return api<BilibiliAccountResponse>("/bilibili/account");
+}
+
+export function getOAuthProviders() {
+  return api<OAuthProvidersResponse>("/oauth/providers");
+}
+
+export function getOAuthAccounts() {
+  return api<OAuthAccountsResponse>("/oauth/accounts");
 }
 
 export function createBilibiliLoginQRCode() {

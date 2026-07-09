@@ -30,6 +30,37 @@ func TestUserIDIsUUIDString(t *testing.T) {
 	}
 }
 
+func TestOAuthAccountLinkAndLookup(t *testing.T) {
+	s := newTestStore(t)
+	user := mustCreateUser(t, s, "oauth:qq:openid-1", "QQ 用户")
+
+	if err := s.LinkOAuthAccount(t.Context(), domain.OAuthAccount{
+		ProviderID:  "qq",
+		UserID:      user.ID,
+		Subject:     "openid-1",
+		DisplayName: "QQ 用户",
+		AvatarURL:   "https://example.com/avatar.png",
+	}); err != nil {
+		t.Fatalf("link oauth account: %v", err)
+	}
+
+	linked, err := s.OAuthAccountByProviderSubject(t.Context(), "qq", "openid-1")
+	if err != nil {
+		t.Fatalf("lookup oauth account: %v", err)
+	}
+	if linked.UserID != user.ID || linked.DisplayName != "QQ 用户" || linked.AvatarURL == "" {
+		t.Fatalf("linked account = %+v", linked)
+	}
+
+	accounts, err := s.UserOAuthAccounts(t.Context(), user.ID)
+	if err != nil {
+		t.Fatalf("user oauth accounts: %v", err)
+	}
+	if len(accounts) != 1 || accounts[0].ProviderID != "qq" || accounts[0].Subject != "openid-1" {
+		t.Fatalf("accounts = %+v", accounts)
+	}
+}
+
 func TestCreateGroupRejectsDuplicateID(t *testing.T) {
 	s := newTestStore(t)
 	user := mustCreateUser(t, s, "oidc-owner", "Owner")

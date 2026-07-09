@@ -210,6 +210,174 @@ func TestOIDCCallbackRejectsInvalidIDTokenIssuer(t *testing.T) {
 	}
 }
 
+func TestQQOAuthLoginCallbackCreatesUserAndBinding(t *testing.T) {
+	s := newTestStore(t)
+	qq := newQQOAuthTestProvider(t)
+	h := NewRouter(Deps{
+		Store:   s,
+		DevAuth: true,
+		OAuthProviders: []OAuthProviderConfig{{
+			ID:           "qq",
+			Name:         "QQ 登录",
+			Type:         "qq",
+			AuthURL:      qq.URL + "/authorize",
+			TokenURL:     qq.URL + "/token",
+			UserInfoURL:  qq.URL + "/userinfo",
+			ClientID:     "qq-client",
+			ClientSecret: "qq-secret",
+			RedirectURL:  "http://app.test/auth/oauth/qq/callback",
+		}},
+	})
+
+	login := httptest.NewRequest(http.MethodGet, "/auth/oauth/qq/login", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, login)
+	if w.Code != http.StatusFound {
+		t.Fatalf("login status = %d, body = %s", w.Code, w.Body.String())
+	}
+	location, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse login location: %v", err)
+	}
+	if location.Path != "/authorize" || location.Query().Get("client_id") != "qq-client" || location.Query().Get("state") == "" {
+		t.Fatalf("login location = %s", location.String())
+	}
+
+	callback := httptest.NewRequest(http.MethodGet, "/auth/oauth/qq/callback?code=qq-code&state="+url.QueryEscape(location.Query().Get("state")), nil)
+	for _, c := range w.Result().Cookies() {
+		callback.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, callback)
+	if w.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, body = %s", w.Code, w.Body.String())
+	}
+	callbackCookies := w.Result().Cookies()
+
+	me := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	for _, c := range callbackCookies {
+		me.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, me)
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), "QQ 用户") {
+		t.Fatalf("expected QQ display name, got %s", w.Body.String())
+	}
+
+	accounts := httptest.NewRequest(http.MethodGet, "/api/v1/oauth/accounts", nil)
+	for _, c := range callbackCookies {
+		accounts.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, accounts)
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), `"providerId":"qq"`) || !strings.Contains(w.Body.String(), `"subject":"openid-1"`) {
+		t.Fatalf("expected QQ account binding, got %s", w.Body.String())
+	}
+}
+
+func TestOAuthCallbackBindsToCurrentUser(t *testing.T) {
+	s := newTestStore(t)
+	qq := newQQOAuthTestProvider(t)
+	h := NewRouter(Deps{
+		Store:   s,
+		DevAuth: true,
+		OAuthProviders: []OAuthProviderConfig{{
+			ID:           "qq",
+			Name:         "QQ 登录",
+			Type:         "qq",
+			AuthURL:      qq.URL + "/authorize",
+			TokenURL:     qq.URL + "/token",
+			UserInfoURL:  qq.URL + "/userinfo",
+			ClientID:     "qq-client",
+			ClientSecret: "qq-secret",
+			RedirectURL:  "http://app.test/auth/oauth/qq/callback",
+		}},
+	})
+	cookies := loginForTest(t, h, "TomyJan")
+	userID := userIDForCookies(t, h, cookies)
+
+	login := httptest.NewRequest(http.MethodGet, "/auth/oauth/qq/login", nil)
+	for _, c := range cookies {
+		login.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, login)
+	if w.Code != http.StatusFound {
+		t.Fatalf("login status = %d, body = %s", w.Code, w.Body.String())
+	}
+	location, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse login location: %v", err)
+	}
+
+	callback := httptest.NewRequest(http.MethodGet, "/auth/oauth/qq/callback?code=qq-code&state="+url.QueryEscape(location.Query().Get("state")), nil)
+	for _, c := range cookies {
+		callback.AddCookie(c)
+	}
+	for _, c := range w.Result().Cookies() {
+		callback.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, callback)
+	if w.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	accounts, err := s.UserOAuthAccounts(t.Context(), userID)
+	if err != nil {
+		t.Fatalf("user oauth accounts: %v", err)
+	}
+	if len(accounts) != 1 || accounts[0].ProviderID != "qq" || accounts[0].Subject != "openid-1" {
+		t.Fatalf("accounts = %+v", accounts)
+	}
+	user, err := s.UserByID(t.Context(), userID)
+	if err != nil {
+		t.Fatalf("load user: %v", err)
+	}
+	if user.DisplayName != "TomyJan" {
+		t.Fatalf("user display name = %q, want TomyJan", user.DisplayName)
+	}
+}
+
+func TestOAuthProvidersAPIHidesSecrets(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{
+		Store:   s,
+		DevAuth: true,
+		OAuthProviders: []OAuthProviderConfig{{
+			ID:           "qq",
+			Name:         "QQ 登录",
+			Type:         "qq",
+			ClientID:     "qq-client",
+			ClientSecret: "qq-secret",
+		}},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/oauth/providers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	body := w.Body.String()
+	if !strings.Contains(body, `"id":"qq"`) || !strings.Contains(body, `"name":"QQ 登录"`) {
+		t.Fatalf("providers body = %s", body)
+	}
+	if strings.Contains(body, "qq-secret") || strings.Contains(body, "clientSecret") {
+		t.Fatalf("providers leaked secret: %s", body)
+	}
+}
+
+func TestQQOpenIDURLUsesGraphMeEndpoint(t *testing.T) {
+	endpoint, err := qqOpenIDURL("https://graph.qq.com/user/get_user_info")
+	if err != nil {
+		t.Fatalf("qq openid url: %v", err)
+	}
+	if endpoint != "https://graph.qq.com/oauth2.0/me" {
+		t.Fatalf("endpoint = %q, want graph me endpoint", endpoint)
+	}
+}
+
 func TestGroupsAndTasksFlow(t *testing.T) {
 	s := newTestStore(t)
 	h := NewRouter(Deps{Store: s, DevAuth: true})
@@ -1551,6 +1719,51 @@ func newBilibiliPointsStatusTestServer(t *testing.T, completed bool) *httptest.S
 				},
 			},
 		})
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func newQQOAuthTestProvider(t *testing.T) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/authorize":
+			w.WriteHeader(http.StatusNoContent)
+		case "/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("parse token form: %v", err)
+			}
+			if r.Form.Get("code") != "qq-code" {
+				t.Fatalf("token code = %q", r.Form.Get("code"))
+			}
+			w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+			_, _ = w.Write([]byte("access_token=qq-access-token&expires_in=7776000"))
+		case "/me":
+			if r.URL.Query().Get("access_token") != "qq-access-token" {
+				t.Fatalf("openid access token = %q", r.URL.Query().Get("access_token"))
+			}
+			w.Header().Set("Content-Type", "text/javascript")
+			_, _ = w.Write([]byte(`callback( {"client_id":"qq-client","openid":"openid-1"} );`))
+		case "/userinfo":
+			if r.URL.Query().Get("access_token") != "qq-access-token" {
+				t.Fatalf("userinfo access token = %q", r.URL.Query().Get("access_token"))
+			}
+			if r.URL.Query().Get("oauth_consumer_key") != "qq-client" {
+				t.Fatalf("userinfo client id = %q", r.URL.Query().Get("oauth_consumer_key"))
+			}
+			if r.URL.Query().Get("openid") != "openid-1" {
+				t.Fatalf("userinfo openid = %q", r.URL.Query().Get("openid"))
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ret":            0,
+				"nickname":       "QQ 用户",
+				"figureurl_qq_1": "https://example.com/qq-40.png",
+				"figureurl_qq_2": "https://example.com/qq-100.png",
+			})
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 	t.Cleanup(server.Close)
 	return server

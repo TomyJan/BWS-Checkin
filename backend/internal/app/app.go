@@ -49,6 +49,7 @@ func New(cfg config.Config) (http.Handler, func(), error) {
 		Bilibili:             bilibiliClient,
 		BilibiliCookieSecret: cfg.BilibiliCookieSecret,
 		TaskSync:             taskSync,
+		OAuthProviders:       oauthProviders(cfg),
 		OIDC: httpapi.OIDCConfig{
 			IssuerURL:         cfg.OIDCIssuerURL,
 			ClientID:          cfg.OIDCClientID,
@@ -63,6 +64,25 @@ func New(cfg config.Config) (http.Handler, func(), error) {
 			MaxAge:   cfg.SessionMaxAge,
 		},
 	}), cleanup, nil
+}
+
+func oauthProviders(cfg config.Config) []httpapi.OAuthProviderConfig {
+	providers := make([]httpapi.OAuthProviderConfig, 0, len(cfg.OAuthProviders))
+	for _, provider := range cfg.OAuthProviders {
+		providers = append(providers, httpapi.OAuthProviderConfig{
+			ID:           provider.ID,
+			Name:         provider.Name,
+			Type:         provider.Type,
+			IssuerURL:    provider.IssuerURL,
+			AuthURL:      provider.AuthURL,
+			TokenURL:     provider.TokenURL,
+			UserInfoURL:  provider.UserInfoURL,
+			ClientID:     provider.ClientID,
+			ClientSecret: provider.ClientSecret,
+			RedirectURL:  provider.RedirectURL,
+		})
+	}
+	return providers
 }
 
 func runTaskSync(ctx context.Context, syncer *tasksync.Syncer) {

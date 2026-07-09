@@ -1,6 +1,6 @@
 # BWS Checkin
 
-BW 乐园互助打卡网站。用户通过 OIDC 登录，上传自己的二维码，加入互助组后即可在一个点位为整组成员依次完成打卡记录。
+BW 乐园互助打卡网站。用户通过已配置的 OAuth 渠道登录，上传自己的二维码，加入互助组后即可在一个点位为整组成员依次完成打卡记录。
 
 ## 本地开发
 
@@ -74,7 +74,7 @@ Release 工作流会自动执行上述流程，并发布 Linux x64 与 Windows x
 - 后端验证通过：`go test ./...`、`go vet ./...`，并确保 `gofmt -l .` 无输出。
 - 前端验证通过：`pnpm test`、`pnpm build`。
 - 生产环境关闭开发登录：`BWS_DEV_AUTH=0`。
-- 生产环境配置完整的 OIDC：`BWS_PUBLIC_BASE`、`BWS_OIDC_ISSUER`、`BWS_OIDC_CLIENT_ID`、`BWS_OIDC_CLIENT_SECRET`。
+- 生产环境至少配置 1 个 OAuth provider，旧版 `BWS_OIDC_*` 配置会自动映射为 `oidc` provider。
 - 生产环境设置 `BWS_SESSION_SECRET`，并在 HTTPS 部署时设置 `BWS_COOKIE_SECURE=1`。
 - 如启用 B 站账号绑定，设置 `BWS_BILIBILI_COOKIE_SECRET`，用于加密保存 B 站 Cookie。
 - 备份策略同时覆盖 `BWS_DB` 和 `BWS_UPLOAD_DIR`。
@@ -84,7 +84,8 @@ Release 工作流会自动执行上述流程，并发布 Linux x64 与 Windows x
 后端负责处理以下路径：
 
 - `/api/v1/*`：业务 API，只使用 `GET` 和 `POST`，响应体使用业务 `ok/error` 表示业务状态。
-- `/auth/oidc/*`：OIDC 登录与回调。
+- `/auth/oauth/*`：多 OAuth 渠道登录与回调。
+- `/auth/oidc/*`：旧版 OIDC 登录与回调，保留兼容。
 - `/healthz`：健康检查。
 
 其他路径全部交给内嵌前端，用于支持 SPA 刷新和直接打开互助组页面。
@@ -137,11 +138,33 @@ $env:BWS_BILIBILI_COOKIE_SECRET = "replace-with-long-random-secret"
 
 ## 开发登录
 
-本地开发登录由后端 `POST /api/v1/dev/login?name=TomyJan` 提供。前端登录按钮会自动调用该接口。生产环境应关闭 `BWS_DEV_AUTH` 并配置真实 OIDC。
+本地开发登录由后端 `POST /api/v1/dev/login?name=TomyJan` 提供。前端登录页保留「开发登录」按钮，并同时显示后端配置的 OAuth 登录渠道。生产环境应关闭 `BWS_DEV_AUTH` 并配置真实 OAuth provider。
 
-## OIDC 配置
+## OAuth 配置
 
-生产环境关闭 mock 登录后，后端通过 OIDC 授权码流程登录：
+生产环境关闭 mock 登录后，后端通过已配置的 OAuth provider 登录。前端会通过 `GET /api/v1/oauth/providers` 获取可用渠道，并跳转到 `/auth/oauth/<providerId>/login`。
+
+通用配置使用 `BWS_OAUTH_PROVIDERS`，内容是 JSON 数组。字段如下：
+
+- `id`：渠道 ID，用于 URL，例如 `qq`。
+- `name`：登录页和个人中心展示名称，例如 `QQ 登录`。
+- `type`：渠道类型，当前支持 `oidc` 和 `qq`；为空时按 `oidc` 处理。
+- `authUrl`、`tokenUrl`、`userInfoUrl`：QQ OAuth 必填。
+- `issuerUrl`：OIDC provider 必填，后端会读取 discovery 文档。
+- `clientId`、`clientSecret`、`redirectUrl`：生产环境必填。
+
+QQ 示例：
+
+```powershell
+$env:BWS_DEV_AUTH = "0"
+$env:BWS_PUBLIC_BASE = "https://bws.example.com"
+$env:BWS_OAUTH_PROVIDERS = '[{"id":"qq","name":"QQ 登录","type":"qq","authUrl":"https://graph.qq.com/oauth2.0/authorize","tokenUrl":"https://graph.qq.com/oauth2.0/token","userInfoUrl":"https://graph.qq.com/user/get_user_info","clientId":"your-client-id","clientSecret":"your-client-secret","redirectUrl":"https://bws.example.com/auth/oauth/qq/callback"}]'
+$env:BWS_SESSION_SECRET = "replace-with-random-secret"
+$env:BWS_COOKIE_SECURE = "1"
+$env:BWS_COOKIE_SAMESITE = "lax"
+```
+
+旧版 OIDC 环境变量仍然可用，并会映射为一个 `oidc` provider：
 
 ```powershell
 $env:BWS_DEV_AUTH = "0"
@@ -155,9 +178,11 @@ $env:BWS_COOKIE_SECURE = "1"
 $env:BWS_COOKIE_SAMESITE = "lax"
 ```
 
-如果不设置 `BWS_OIDC_REDIRECT_URL`，默认使用 `BWS_PUBLIC_BASE + /auth/oidc/callback`。
+如果不设置 `BWS_OIDC_REDIRECT_URL`，默认使用 `BWS_PUBLIC_BASE + /auth/oauth/oidc/callback`。如仍直接访问旧路径 `/auth/oidc/login`，旧回调 `/auth/oidc/callback` 也继续可用。
 
-生产环境关闭 `BWS_DEV_AUTH` 后，服务启动时会校验 OIDC 和 `BWS_SESSION_SECRET`。缺少必要配置时后端会直接启动失败，避免以不完整鉴权配置对外提供服务。
+生产环境关闭 `BWS_DEV_AUTH` 后，服务启动时会校验 OAuth provider 和 `BWS_SESSION_SECRET`。缺少必要配置时后端会直接启动失败，避免以不完整鉴权配置对外提供服务。
+
+个人中心会展示当前用户已绑定的 OAuth 渠道，并允许绑定未绑定渠道；当前不提供解绑入口。OAuth 登录时如果没有找到既有关联账号，后端会自动创建站内用户并落库绑定。
 
 ### Cookie 配置
 

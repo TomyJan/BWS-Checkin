@@ -28,6 +28,23 @@ type BilibiliAccount struct {
 	UpdatedAt              *time.Time `json:"updatedAt"`
 }
 
+type OAuthProvider struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type OAuthAccount struct {
+	ProviderID   string     `json:"providerId"`
+	ProviderName string     `json:"providerName"`
+	UserID       string     `json:"userId"`
+	Subject      string     `json:"subject"`
+	DisplayName  string     `json:"displayName"`
+	AvatarURL    string     `json:"avatarUrl"`
+	CreatedAt    *time.Time `json:"createdAt"`
+	UpdatedAt    *time.Time `json:"updatedAt"`
+}
+
 type Group struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`

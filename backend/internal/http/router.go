@@ -26,10 +26,14 @@ func NewRouterWithLogger(deps Deps, logger *slog.Logger) http.Handler {
 	h := Handler{deps: deps}
 	r.Get("/auth/oidc/login", h.oidcLogin)
 	r.Get("/auth/oidc/callback", h.oidcCallback)
+	r.Get("/auth/oauth/{provider}/login", h.oauthLogin)
+	r.Get("/auth/oauth/{provider}/callback", h.oauthCallback)
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/dev/login", h.devLogin)
 		r.Post("/logout", h.logout)
 		r.Get("/me", h.me)
+		r.Get("/oauth/providers", h.oauthProviders)
+		r.Get("/oauth/accounts", h.oauthAccounts)
 		r.Post("/me/qr/upload", h.uploadQR)
 		r.Post("/me/qr/delete", h.deleteQR)
 		r.Post("/me/qr/source/set", h.setQRSource)

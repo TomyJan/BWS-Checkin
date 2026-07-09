@@ -34,6 +34,31 @@ export interface BilibiliLoginPollResponse {
   account?: BilibiliAccount;
 }
 
+export interface OAuthProvider {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface OAuthAccount {
+  providerId: string;
+  providerName: string;
+  userId?: string;
+  subject: string;
+  displayName: string;
+  avatarUrl: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface OAuthProvidersResponse {
+  providers: OAuthProvider[] | null;
+}
+
+export interface OAuthAccountsResponse {
+  accounts: OAuthAccount[] | null;
+}
+
 export interface Group {
   id: string;
   name: string;

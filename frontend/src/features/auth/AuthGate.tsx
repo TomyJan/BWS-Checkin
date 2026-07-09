@@ -1,7 +1,7 @@
 import { Button, CircularProgress, Stack, Typography } from "@mui/material";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PropsWithChildren } from "react";
-import { api } from "../../api/client";
+import { api, getOAuthProviders } from "../../api/client";
 import type { MeResponse } from "../../api/types";
 
 const CACHED_ME_KEY = "bws:me";
@@ -24,6 +24,12 @@ export function AuthGate({ children }: PropsWithChildren) {
         throw error;
       }
     },
+    retry: false
+  });
+  const oauthProviders = useQuery({
+    queryKey: ["oauth-providers"],
+    queryFn: getOAuthProviders,
+    enabled: me.isError,
     retry: false
   });
 
@@ -51,8 +57,13 @@ export function AuthGate({ children }: PropsWithChildren) {
         <Typography variant="h4" sx={{ fontWeight: 800 }}>
           BWS Checkin
         </Typography>
-        <Button variant="contained" onClick={login}>
-          登录
+        {(oauthProviders.data?.providers ?? []).map((provider) => (
+          <Button key={provider.id} variant="contained" href={`/auth/oauth/${provider.id}/login`}>
+            {provider.name}
+          </Button>
+        ))}
+        <Button variant={(oauthProviders.data?.providers?.length ?? 0) > 0 ? "outlined" : "contained"} onClick={login}>
+          开发登录
         </Button>
       </Stack>
     );

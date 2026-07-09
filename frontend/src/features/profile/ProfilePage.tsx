@@ -16,6 +16,8 @@ import {
   createBilibiliLoginQRCode,
   getBilibiliAccount,
   getMe,
+  getOAuthAccounts,
+  getOAuthProviders,
   pollBilibiliLoginQRCode,
   setQRSource,
   unbindBilibiliAccount
@@ -60,8 +62,12 @@ export function ProfilePage() {
   const userSelectedSourceRef = useRef(false);
   const me = useQuery({ queryKey: ["me"], queryFn: getMe });
   const bilibiliAccount = useQuery({ queryKey: ["bilibili-account"], queryFn: getBilibiliAccount });
+  const oauthProviders = useQuery({ queryKey: ["oauth-providers"], queryFn: getOAuthProviders });
+  const oauthAccounts = useQuery({ queryKey: ["oauth-accounts"], queryFn: getOAuthAccounts });
   const user = me.data?.user;
   const account = bilibiliAccount.data?.account;
+  const providers = oauthProviders.data?.providers ?? [];
+  const linkedAccounts = oauthAccounts.data?.accounts ?? [];
   const isBound = Boolean(bilibiliAccount.data?.bound && account);
   const currentSource = user?.qrSource ?? "uploaded";
   const hasCurrentQR = Boolean(user?.qrImageUrl);
@@ -233,6 +239,58 @@ export function ProfilePage() {
                     B 站生成
                   </Button>
                 </Box>
+              </Stack>
+            </Paper>
+
+            <Paper variant="outlined" sx={{ borderRadius: panelRadius, p: 2, bgcolor: "background.paper" }}>
+              <Stack spacing={1.25}>
+                <Typography component="h2" variant="h6" sx={{ fontWeight: 900 }}>
+                  账号绑定
+                </Typography>
+                {providers.length > 0 ? (
+                  <Stack spacing={1}>
+                    {providers.map((provider) => {
+                      const linked = linkedAccounts.find((item) => item.providerId === provider.id);
+                      return (
+                        <Box
+                          key={provider.id}
+                          sx={{
+                            display: "grid",
+                            gridTemplateColumns: "minmax(0, 1fr) auto",
+                            alignItems: "center",
+                            gap: 1,
+                            px: 1.25,
+                            py: 1,
+                            borderRadius: controlSurfaceRadius,
+                            bgcolor: "action.hover"
+                          }}
+                        >
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 850 }} noWrap>
+                              {provider.name}
+                            </Typography>
+                            {linked?.displayName && (
+                              <Typography color="text.secondary" sx={{ fontSize: 13 }} noWrap>
+                                {linked.displayName}
+                              </Typography>
+                            )}
+                          </Box>
+                          {linked ? (
+                            <Chip size="small" color="success" label="已绑定" />
+                          ) : (
+                            <Button size="small" variant="outlined" href={`/auth/oauth/${provider.id}/login`} sx={{ borderRadius: 999 }}>
+                              绑定 {provider.name}
+                            </Button>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                ) : (
+                  <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                    暂无可绑定渠道
+                  </Typography>
+                )}
               </Stack>
             </Paper>
 

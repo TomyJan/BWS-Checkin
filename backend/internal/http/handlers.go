@@ -30,10 +30,24 @@ type Deps struct {
 	DevAuth              bool
 	UploadDir            string
 	OIDC                 OIDCConfig
+	OAuthProviders       []OAuthProviderConfig
 	Session              SessionConfig
 	Bilibili             *bilibili.Client
 	BilibiliCookieSecret string
 	TaskSync             *tasksync.Syncer
+}
+
+type OAuthProviderConfig struct {
+	ID           string
+	Name         string
+	Type         string
+	IssuerURL    string
+	AuthURL      string
+	TokenURL     string
+	UserInfoURL  string
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
 }
 
 type Handler struct {
@@ -99,6 +113,39 @@ func (h Handler) me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOK(w, map[string]domain.User{"user": user})
+}
+
+func (h Handler) oauthProviders(w http.ResponseWriter, r *http.Request) {
+	providers := make([]domain.OAuthProvider, 0, len(h.deps.OAuthProviders))
+	for _, provider := range h.deps.OAuthProviders {
+		if provider.ID == "" {
+			continue
+		}
+		providers = append(providers, domain.OAuthProvider{
+			ID:   provider.ID,
+			Name: provider.displayName(),
+			Type: provider.providerType(),
+		})
+	}
+	writeOK(w, map[string][]domain.OAuthProvider{"providers": providers})
+}
+
+func (h Handler) oauthAccounts(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	accounts, err := h.deps.Store.UserOAuthAccounts(r.Context(), user.ID)
+	if err != nil {
+		writeBusinessError(w, "oauth_accounts_load_failed", err.Error())
+		return
+	}
+	for index := range accounts {
+		if provider, ok := h.oauthProvider(accounts[index].ProviderID); ok {
+			accounts[index].ProviderName = provider.displayName()
+		}
+	}
+	writeOK(w, map[string][]domain.OAuthAccount{"accounts": accounts})
 }
 
 func (h Handler) uploadQR(w http.ResponseWriter, r *http.Request) {
