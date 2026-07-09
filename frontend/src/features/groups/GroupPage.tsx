@@ -411,36 +411,24 @@ export function GroupPage() {
 
       <Box className="qr-overlay qr-overlay-bottom" onClick={(event) => event.stopPropagation()}>
         <Box className="task-sheet">
-          <Button
+          <Box
+            component="button"
+            type="button"
             className="task-trigger"
-            color="inherit"
-            fullWidth
             onClick={() => setTaskPickerOpen(true)}
-            sx={{
-              justifyContent: "flex-start",
-              gap: 1.5,
-              minHeight: 74,
-              px: 1.75,
-              py: 1.5,
-              borderRadius: 5,
-              bgcolor: "#f8fafc",
-              color: "#111827",
-              textAlign: "left",
-              "&:hover": { bgcolor: "#eef4fb" }
-            }}
           >
             <TaskIconBadge task={currentTask} testId="current-task-icon" />
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Typography sx={{ overflow: "hidden", fontSize: 17, fontWeight: 950, lineHeight: 1.2, textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography className="task-trigger-title">
                 {currentTask?.name ?? "无点位"}
               </Typography>
-              <Typography sx={{ mt: 0.5, color: "#64748b", fontSize: 12, fontWeight: 800, lineHeight: 1.25 }}>
+              <Typography className="task-trigger-meta">
                 {currentTask ? taskMetaLabel(currentTask) : "暂无可切换点位"}
               </Typography>
             </Box>
             <Box className="task-progress">{currentTask ? `${currentTask.completedCount}/${currentTask.totalCount}` : "0/0"}</Box>
-            <ExpandMoreIcon sx={{ color: "#64748b", flex: "0 0 auto" }} />
-          </Button>
+            <ExpandMoreIcon className="task-trigger-chevron" />
+          </Box>
           <Box className="member-grid">
             {members.map((entry, index) => (
               <Box
@@ -497,10 +485,10 @@ export function GroupPage() {
         onClose={() => setTaskPickerOpen(false)}
         fullWidth
         maxWidth="sm"
-        slotProps={{ paper: { sx: { overflow: "hidden", borderRadius: 6 } } }}
+        slotProps={{ paper: { className: "task-picker-paper" } }}
       >
-        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2, px: 2.5, pt: 2.25, pb: 1.25 }}>
-          <Typography component="span" variant="h6" sx={{ fontWeight: 950, letterSpacing: 0 }}>
+        <DialogTitle className="task-picker-title">
+          <Typography component="span" variant="h6" className="task-picker-heading">
             选择点位
           </Typography>
           <IconButton aria-label="关闭点位选择" onClick={() => setTaskPickerOpen(false)} size="small">
@@ -508,7 +496,7 @@ export function GroupPage() {
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ px: 0, pt: 0, pb: 2 }}>
-          <Box sx={{ borderBottom: 1, borderColor: "divider", px: 2, pb: 1.5 }}>
+          <Box className="task-picker-tabs-wrap">
             <Tabs
               value={selectedTaskGroupName}
               onChange={(_event, value: string) => setSelectedTaskGroup(value)}
@@ -521,7 +509,7 @@ export function GroupPage() {
                   minHeight: 36,
                   mr: 1,
                   px: 1.75,
-                  borderRadius: 999,
+                  borderRadius: "999px",
                   bgcolor: "action.hover",
                   color: "text.secondary",
                   fontSize: 13,
@@ -553,52 +541,33 @@ export function GroupPage() {
             </Tabs>
           </Box>
 
-          <List disablePadding sx={{ display: "grid", gap: 1.25, px: 2, pt: 1.75 }}>
+          <List disablePadding className="task-picker-list">
             {(visibleTaskGroup?.tasks ?? []).map((task) => (
               <ListItemButton
                 key={task.id}
+                className={`task-picker-card ${task.id === currentTask?.id ? "task-picker-card-selected" : ""}`}
                 selected={task.id === currentTask?.id}
                 onClick={() => selectTask(task)}
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: "auto minmax(0, 1fr)",
-                  gap: 1.5,
-                  alignItems: "flex-start",
-                  border: 1,
-                  borderColor: task.id === currentTask?.id ? "#91c7ff" : "divider",
-                  borderRadius: 5,
-                  bgcolor: task.id === currentTask?.id ? "#eaf4ff" : "background.paper",
-                  color: "text.primary",
-                  px: 1.75,
-                  py: 1.75,
-                  "&.Mui-selected": {
-                    bgcolor: "#eaf4ff",
-                    color: "text.primary"
-                  },
-                  "&.Mui-selected:hover": {
-                    bgcolor: "#dcebff"
-                  }
-                }}
               >
                 <TaskIconBadge task={task} testId={`task-icon-${task.id}`} />
-                <Stack spacing={0.85} sx={{ width: "100%", minWidth: 0 }}>
+                <Stack spacing={0.85} sx={{ minWidth: 0 }}>
                   <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 1.5 }}>
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ overflow: "hidden", fontSize: 15, fontWeight: 950, lineHeight: 1.25, textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <Typography className="task-picker-card-name">
                         {task.name}
                       </Typography>
-                      <Typography sx={{ mt: 0.75, color: "#1f2937", fontSize: 14, fontWeight: 850, lineHeight: 1.35 }}>
+                      <Typography className="task-picker-card-title-text">
                         {task.title || task.name}
                       </Typography>
                     </Box>
                     <Chip
                       size="small"
+                      className="task-picker-reward"
                       label={`乐园币 x${task.rewardCoins}`}
-                      sx={{ flex: "0 0 auto", bgcolor: "#fff4d6", color: "#8a5a00", fontWeight: 950 }}
                     />
                   </Stack>
                   {task.description && (
-                    <Typography sx={{ color: "text.secondary", fontSize: 13, lineHeight: 1.45 }}>
+                    <Typography className="task-picker-description">
                       {task.description}
                     </Typography>
                   )}
@@ -606,9 +575,9 @@ export function GroupPage() {
                     <LinearProgress
                       variant="determinate"
                       value={task.totalCount > 0 ? (task.completedCount / task.totalCount) * 100 : 0}
-                      sx={{ height: 7, borderRadius: 999, bgcolor: "#e2e8f0" }}
+                      className="task-picker-progress"
                     />
-                    <Typography sx={{ color: "text.secondary", fontWeight: 900, fontSize: 12 }}>
+                    <Typography className="task-picker-progress-label">
                       {task.completedCount}/{task.totalCount}
                     </Typography>
                   </Box>
@@ -687,25 +656,13 @@ function taskIconKind(task?: TaskStatus) {
 function TaskIconBadge({ task, testId }: { task?: TaskStatus; testId: string }) {
   const kind = taskIconKind(task);
   const config = {
-    venue: { Icon: VenueIcon, bgcolor: "#eaf4ff", color: "#1769c2" },
-    stage: { Icon: StageIcon, bgcolor: "#fff1f2", color: "#be123c" },
-    interaction: { Icon: InteractionIcon, bgcolor: "#edfdf4", color: "#15803d" }
+    venue: { Icon: VenueIcon },
+    stage: { Icon: StageIcon },
+    interaction: { Icon: InteractionIcon }
   }[kind];
   const Icon = config.Icon;
   return (
-    <Box
-      data-testid={testId}
-      sx={{
-        width: 46,
-        height: 46,
-        display: "grid",
-        placeItems: "center",
-        flex: "0 0 auto",
-        borderRadius: 4,
-        bgcolor: config.bgcolor,
-        color: config.color
-      }}
-    >
+    <Box data-testid={testId} className={`task-icon-badge task-icon-${kind}`}>
       <Icon sx={{ fontSize: 25 }} />
     </Box>
   );
