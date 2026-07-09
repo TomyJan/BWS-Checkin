@@ -36,7 +36,7 @@ describe("ProfilePage", () => {
     meQRSource = "uploaded";
     initialBilibiliBound = false;
     let bilibiliBound = initialBilibiliBound;
-    vi.spyOn(window, "fetch").mockImplementation((input) => {
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const url = String(input);
       if (url.endsWith("/api/v1/me")) {
         return Promise.resolve(
@@ -83,7 +83,9 @@ describe("ProfilePage", () => {
         );
       }
       if (url.endsWith("/api/v1/me/qr/source/set")) {
-        return Promise.resolve(Response.json({ ok: true, data: { user: { id: "a4fc8cfb-7dc8-485e-a270-76d18a44cdc7", displayName: "TomyJan", avatarUrl: "", qrImageUrl: "/api/v1/user/qr?userId=a4fc8cfb-7dc8-485e-a270-76d18a44cdc7", qrSource: "bilibili_generated" } } }));
+        const body = JSON.parse(String(init?.body ?? "{}")) as { source?: "uploaded" | "bilibili_generated" };
+        meQRSource = body.source ?? meQRSource;
+        return Promise.resolve(Response.json({ ok: true, data: { user: { id: "a4fc8cfb-7dc8-485e-a270-76d18a44cdc7", displayName: "TomyJan", avatarUrl: "", qrImageUrl: meQRCodeUrl, qrSource: meQRSource } } }));
       }
       return Promise.resolve(Response.json({ ok: true, data: {} }));
     });
@@ -116,7 +118,12 @@ describe("ProfilePage", () => {
     expect(getComputedStyle(currentQRImage).backgroundColor).toBe("rgba(0, 0, 0, 0)");
     expect(screen.getByRole("button", { name: "更新上传二维码" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "替换当前图片" })).not.toBeInTheDocument();
-    expect(screen.getByText("尚未生成登录二维码")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "B 站扫码登录" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "二维码来源" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "二维码来源" }).compareDocumentPosition(screen.getByRole("heading", { name: "上传二维码" })) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(screen.queryByText("BiliTomy")).not.toBeInTheDocument();
     expect(screen.queryByText("账号已可用于生成二维码")).not.toBeInTheDocument();
   });
@@ -134,6 +141,8 @@ describe("ProfilePage", () => {
   test("supports Bilibili QR login polling and QR source switching", async () => {
     renderProfilePage();
 
+    expect(await screen.findByRole("heading", { name: "二维码来源" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "B 站生成" }));
     expect(await screen.findByRole("heading", { name: "B 站扫码登录" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "生成登录二维码" }));
     expect(await screen.findByRole("img", { name: "B 站登录二维码" })).toHaveAttribute("src", "data:image/png;base64,loginqr");
@@ -145,22 +154,40 @@ describe("ProfilePage", () => {
     expect(bilibiliPollRequests).toBe(0);
     expect(screen.queryByText("BiliTomy")).not.toBeInTheDocument();
     expect(await screen.findByText("BiliTomy", undefined, { timeout: 2600 })).toBeInTheDocument();
+    expect(screen.getByTestId("bilibili-account-avatar")).toBeInTheDocument();
     expect(bilibiliPollRequests).toBe(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "B 站生成" }));
-    await waitFor(() => expect(screen.getAllByText("B 站生成").length).toBeGreaterThan(0));
-    expect(screen.getByRole("img", { name: "我的二维码" })).toHaveAttribute("src", "/api/v1/user/qr?userId=a4fc8cfb-7dc8-485e-a270-76d18a44cdc7");
+    await waitFor(() => expect(screen.getByRole("img", { name: "我的二维码" })).toHaveAttribute("src", expect.stringMatching(/qr\?userId=.*&v=/)));
   });
 
   test("generates a renderable Bilibili login QR image when server image data is missing", async () => {
     loginQRCodeImageDataUrl = undefined;
     renderProfilePage();
 
+    fireEvent.click(await screen.findByRole("button", { name: "B 站生成" }));
     fireEvent.click(await screen.findByRole("button", { name: "生成登录二维码" }));
 
     const loginImage = await screen.findByRole("img", { name: "B 站登录二维码" });
     expect(loginImage).toHaveAttribute("src", expect.stringMatching(/^data:image\//));
     expect(screen.getByText("等待 B 站客户端扫码")).toBeInTheDocument();
     expect(screen.queryByText("接口未返回二维码图片")).not.toBeInTheDocument();
+  });
+
+  test("switches visible QR source panels and reloads the current QR image", async () => {
+    initialBilibiliBound = true;
+    meQRSource = "bilibili_generated";
+    renderProfilePage();
+
+    const firstImage = await screen.findByRole("img", { name: "我的二维码" });
+    const firstSrc = firstImage.getAttribute("src");
+    expect(await screen.findByRole("heading", { name: "B 站扫码登录" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "上传二维码" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "上传图片" }));
+
+    expect(await screen.findByRole("heading", { name: "上传二维码" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "B 站扫码登录" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("img", { name: "我的二维码" }).getAttribute("src")).not.toBe(firstSrc));
+    expect(screen.getByRole("img", { name: "我的二维码" })).toHaveAttribute("src", expect.stringMatching(/&v=/));
   });
 });
