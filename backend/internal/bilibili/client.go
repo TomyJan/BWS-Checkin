@@ -53,6 +53,23 @@ type NavUser struct {
 	FaceURL string
 }
 
+type OfflinePointsRequest struct {
+	BID     int
+	Year    int
+	VenueID int
+	Day     string
+}
+
+type OfflinePoint struct {
+	ID          string
+	Name        string
+	ImageURL    string
+	RewardCoins int
+	Completed   bool
+	Description string
+	EventDay    string
+}
+
 func NewClient(options ClientOptions) *Client {
 	passportBaseURL := strings.TrimRight(options.PassportBaseURL, "/")
 	if passportBaseURL == "" {
@@ -152,6 +169,60 @@ func (c *Client) Nav(ctx context.Context, cookies []*http.Cookie) (NavUser, erro
 	}, nil
 }
 
+func (c *Client) OfflinePoints(ctx context.Context, request OfflinePointsRequest, cookies []*http.Cookie) ([]OfflinePoint, error) {
+	endpoint, err := url.Parse(c.apiBaseURL + "/x/activity/bws/offline/points")
+	if err != nil {
+		return nil, err
+	}
+	query := endpoint.Query()
+	query.Set("bid", strconv.Itoa(request.BID))
+	query.Set("fid", strconv.Itoa(request.VenueID))
+	query.Set("day", request.Day)
+	query.Set("year", strconv.Itoa(request.Year))
+	endpoint.RawQuery = query.Encode()
+
+	var payload struct {
+		Code int `json:"code"`
+		Data struct {
+			PointsList map[string]struct {
+				Points []struct {
+					ID          any    `json:"id"`
+					Name        string `json:"name"`
+					Image       string `json:"image"`
+					RewardCoins int    `json:"unlocked"`
+					IsPoint     any    `json:"is_point"`
+					Description string `json:"dic"`
+				} `json:"points"`
+			} `json:"points_list"`
+		} `json:"data"`
+	}
+	if err := c.getJSON(ctx, endpoint.String(), cookies, &payload); err != nil {
+		return nil, err
+	}
+	if payload.Code != 0 {
+		return nil, fmt.Errorf("bilibili offline points failed: code %d", payload.Code)
+	}
+	var points []OfflinePoint
+	for day, dayPoints := range payload.Data.PointsList {
+		for _, point := range dayPoints.Points {
+			id := stringify(point.ID)
+			if id == "" {
+				continue
+			}
+			points = append(points, OfflinePoint{
+				ID:          id,
+				Name:        point.Name,
+				ImageURL:    point.Image,
+				RewardCoins: point.RewardCoins,
+				Completed:   truthy(point.IsPoint),
+				Description: point.Description,
+				EventDay:    day,
+			})
+		}
+	}
+	return points, nil
+}
+
 func (c *Client) getJSON(ctx context.Context, endpoint string, cookies []*http.Cookie, target any) error {
 	_, err := c.getJSONResponse(ctx, endpoint, cookies, target)
 	return err
@@ -191,5 +262,35 @@ func mapLoginStatus(code int) string {
 		return LoginStatusExpired
 	default:
 		return LoginStatusFailed
+	}
+}
+
+func stringify(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case float64:
+		return strconv.FormatInt(int64(v), 10)
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	default:
+		return ""
+	}
+}
+
+func truthy(value any) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case float64:
+		return v != 0
+	case int:
+		return v != 0
+	case string:
+		return v == "1" || strings.EqualFold(v, "true")
+	default:
+		return false
 	}
 }

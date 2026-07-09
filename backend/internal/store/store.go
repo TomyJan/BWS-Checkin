@@ -65,6 +65,28 @@ type AuditLog struct {
 	CreatedAt    string
 }
 
+type SyncedTaskInput struct {
+	ID          string
+	ExternalID  string
+	GroupName   string
+	Name        string
+	Title       string
+	RewardCoins int
+	Description string
+	ImageURL    string
+	VenueID     string
+	VenueName   string
+	EventDay    string
+	SortOrder   int
+}
+
+type TaskSyncState struct {
+	LastSuccessAt *time.Time
+	LastErrorAt   *time.Time
+	LastErrorCode string
+	UpdatedAt     *time.Time
+}
+
 type SyncTaskCompletionInput struct {
 	GroupID         string
 	TaskID          string
@@ -372,6 +394,20 @@ func (s *Store) BilibiliAccount(ctx context.Context, userID string) (domain.Bili
 	return account, nil
 }
 
+func (s *Store) AnyBilibiliAccount(ctx context.Context) (domain.BilibiliAccount, error) {
+	var userID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT user_id
+		FROM bilibili_accounts
+		ORDER BY last_validated_at DESC, updated_at DESC
+		LIMIT 1
+	`).Scan(&userID)
+	if err != nil {
+		return domain.BilibiliAccount{}, err
+	}
+	return s.BilibiliAccount(ctx, userID)
+}
+
 func (s *Store) UnbindBilibiliAccount(ctx context.Context, userID string) error {
 	_, err := s.db.ExecContext(ctx, `
 		DELETE FROM bilibili_accounts
@@ -582,6 +618,105 @@ func (s *Store) RemoveMember(ctx context.Context, groupID string, userID string)
 		WHERE group_id = ? AND user_id = ? AND role != 'owner'
 	`, groupID, userID)
 	return err
+}
+
+func (s *Store) ReplaceBilibiliTasks(ctx context.Context, tasks []SyncedTaskInput) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE tasks
+		SET enabled = 0
+		WHERE sync_source IN ('default', 'bilibili')
+	`); err != nil {
+		return err
+	}
+	for _, task := range tasks {
+		if task.ID == "" || task.Name == "" {
+			continue
+		}
+		if task.Title == "" {
+			task.Title = task.Name
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO tasks (
+				id, external_id, group_name, name, title, reward_coins, description,
+				image_url, venue_id, venue_name, event_day, sync_source, sort_order, enabled
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'bilibili', ?, 1)
+			ON CONFLICT(id) DO UPDATE SET
+				external_id = excluded.external_id,
+				group_name = excluded.group_name,
+				name = excluded.name,
+				title = excluded.title,
+				reward_coins = excluded.reward_coins,
+				description = excluded.description,
+				image_url = excluded.image_url,
+				venue_id = excluded.venue_id,
+				venue_name = excluded.venue_name,
+				event_day = excluded.event_day,
+				sync_source = excluded.sync_source,
+				sort_order = excluded.sort_order,
+				enabled = 1
+		`, task.ID, task.ExternalID, task.GroupName, task.Name, task.Title, task.RewardCoins, task.Description, task.ImageURL, task.VenueID, task.VenueName, task.EventDay, task.SortOrder)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) RecordTaskSyncSuccess(ctx context.Context, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO task_sync_state (id, last_success_at, last_error_at, last_error_code, updated_at)
+		VALUES ('bws_tasks', ?, '', '', ?)
+		ON CONFLICT(id) DO UPDATE SET
+			last_success_at = excluded.last_success_at,
+			last_error_at = '',
+			last_error_code = '',
+			updated_at = excluded.updated_at
+	`, at.UTC().Format(time.RFC3339Nano), at.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+func (s *Store) RecordTaskSyncError(ctx context.Context, code string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO task_sync_state (id, last_success_at, last_error_at, last_error_code, updated_at)
+		VALUES ('bws_tasks', '', ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			last_error_at = excluded.last_error_at,
+			last_error_code = excluded.last_error_code,
+			updated_at = excluded.updated_at
+	`, at.UTC().Format(time.RFC3339Nano), code, at.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+func (s *Store) TaskSyncState(ctx context.Context) (TaskSyncState, error) {
+	var lastSuccessAt string
+	var lastErrorAt string
+	var state TaskSyncState
+	var updatedAt string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT last_success_at, last_error_at, last_error_code, updated_at
+		FROM task_sync_state
+		WHERE id = 'bws_tasks'
+	`).Scan(&lastSuccessAt, &lastErrorAt, &state.LastErrorCode, &updatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return TaskSyncState{}, nil
+	}
+	if err != nil {
+		return TaskSyncState{}, err
+	}
+	state.LastSuccessAt = parseOptionalTime(lastSuccessAt)
+	state.LastErrorAt = parseOptionalTime(lastErrorAt)
+	state.UpdatedAt = parseOptionalTime(updatedAt)
+	return state, nil
 }
 
 func (s *Store) GroupTasks(ctx context.Context, groupID string) ([]domain.TaskStatus, error) {

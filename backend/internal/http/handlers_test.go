@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
@@ -24,6 +25,7 @@ import (
 
 	"bws-checkin/backend/internal/bilibili"
 	"bws-checkin/backend/internal/store"
+	"bws-checkin/backend/internal/tasksync"
 )
 
 func TestDevLoginAndMe(t *testing.T) {
@@ -403,6 +405,35 @@ func TestBilibiliLoginQRCodeFlowBindsAccountAndGeneratesQR(t *testing.T) {
 	assertOK(t, w)
 	if !strings.Contains(w.Body.String(), `"bound":false`) {
 		t.Fatalf("expected unbound account response, got %s", w.Body.String())
+	}
+}
+
+func TestTaskSyncAPI(t *testing.T) {
+	s := newTestStore(t)
+	syncer := tasksync.New(s, &httpTaskSource{tasks: []tasksync.Task{{
+		ExternalID: "4001", GroupName: "8.1馆", Name: "官方任务", Title: "官方任务",
+		VenueID: "1", VenueName: "8.1馆", EventDay: "20260710", SortOrder: 10,
+	}}}, tasksync.Config{Now: func() time.Time { return time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC) }})
+	h := NewRouter(Deps{Store: s, DevAuth: true, TaskSync: syncer})
+	cookies := loginForTest(t, h, "TomyJan")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/task/sync", nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/task/sync/status", nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), "2026-07-10T12:00:00Z") {
+		t.Fatalf("expected sync status timestamp, got %s", w.Body.String())
 	}
 }
 
@@ -996,6 +1027,18 @@ func hasAuditAction(logs []store.AuditLog, action string) bool {
 		}
 	}
 	return false
+}
+
+type httpTaskSource struct {
+	tasks []tasksync.Task
+	err   error
+}
+
+func (s *httpTaskSource) FetchTasks(ctx context.Context) ([]tasksync.Task, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return append([]tasksync.Task(nil), s.tasks...), nil
 }
 
 func jsonRequest(t *testing.T, method, path string, body any) *http.Request {

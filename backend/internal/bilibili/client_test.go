@@ -136,6 +136,60 @@ func TestNav(t *testing.T) {
 	}
 }
 
+func TestOfflinePoints(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/x/activity/bws/offline/points" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("bid") != "202601" || r.URL.Query().Get("year") != "202601" || r.URL.Query().Get("fid") != "1" || r.URL.Query().Get("day") != "20260710" {
+			t.Fatalf("query = %s", r.URL.RawQuery)
+		}
+		writeJSON(t, w, map[string]any{
+			"code": 0,
+			"data": map[string]any{
+				"points_list": map[string]any{
+					"20260710": map[string]any{
+						"points": []map[string]any{
+							{
+								"id":       1001,
+								"name":     "主舞台任务",
+								"image":    "https://example.com/task.png",
+								"unlocked": 5,
+								"is_point": 1,
+								"dic":      "完成主舞台互动。",
+							},
+						},
+						"task": map[string]any{"total": 1, "cur_count": 1},
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := bilibili.NewClient(bilibili.ClientOptions{
+		PassportBaseURL: server.URL,
+		APIBaseURL:      server.URL,
+		HTTPClient:      server.Client(),
+	})
+	got, err := client.OfflinePoints(t.Context(), bilibili.OfflinePointsRequest{
+		BID: 202601, Year: 202601, VenueID: 1, Day: "20260710",
+	}, []*http.Cookie{{Name: "SESSDATA", Value: "session-value"}})
+	if err != nil {
+		t.Fatalf("offline points: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("points length = %d, want 1", len(got))
+	}
+	point := got[0]
+	if point.ID != "1001" || point.Name != "主舞台任务" || point.ImageURL != "https://example.com/task.png" {
+		t.Fatalf("point = %+v", point)
+	}
+	if point.RewardCoins != 5 || !point.Completed || point.Description != "完成主舞台互动。" || point.EventDay != "20260710" {
+		t.Fatalf("point fields = %+v", point)
+	}
+}
+
 func TestEncryptCookieJarRoundTrip(t *testing.T) {
 	cookies := []*http.Cookie{
 		{Name: "SESSDATA", Value: "session-value", Domain: ".bilibili.com", Path: "/", Expires: time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC), HttpOnly: true},

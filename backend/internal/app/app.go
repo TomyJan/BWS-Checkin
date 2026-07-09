@@ -1,13 +1,16 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"bws-checkin/backend/internal/bilibili"
 	"bws-checkin/backend/internal/config"
 	httpapi "bws-checkin/backend/internal/http"
 	"bws-checkin/backend/internal/store"
+	"bws-checkin/backend/internal/tasksync"
 )
 
 func New(cfg config.Config) (http.Handler, func(), error) {
@@ -18,7 +21,11 @@ func New(cfg config.Config) (http.Handler, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	cleanup := func() { _ = db.Close() }
+	ctx, cancel := context.WithCancel(context.Background())
+	cleanup := func() {
+		cancel()
+		_ = db.Close()
+	}
 	var bilibiliClient *bilibili.Client
 	if cfg.BilibiliLoginEnabled {
 		bilibiliClient = bilibili.NewClient(bilibili.ClientOptions{
@@ -26,12 +33,22 @@ func New(cfg config.Config) (http.Handler, func(), error) {
 			APIBaseURL:      cfg.BilibiliAPIBase,
 		})
 	}
+	var taskSync *tasksync.Syncer
+	if bilibiliClient != nil {
+		taskSync = tasksync.New(db, tasksync.NewBilibiliSource(tasksync.BilibiliSourceConfig{
+			Store:        db,
+			Client:       bilibiliClient,
+			CookieSecret: cfg.BilibiliCookieSecret,
+		}), tasksync.Config{FreshTTL: 5 * time.Minute})
+		go runTaskSync(ctx, taskSync)
+	}
 	return httpapi.NewRouter(httpapi.Deps{
 		Store:                db,
 		DevAuth:              cfg.DevAuth,
 		UploadDir:            cfg.UploadDir,
 		Bilibili:             bilibiliClient,
 		BilibiliCookieSecret: cfg.BilibiliCookieSecret,
+		TaskSync:             taskSync,
 		OIDC: httpapi.OIDCConfig{
 			IssuerURL:         cfg.OIDCIssuerURL,
 			ClientID:          cfg.OIDCClientID,
@@ -46,6 +63,20 @@ func New(cfg config.Config) (http.Handler, func(), error) {
 			MaxAge:   cfg.SessionMaxAge,
 		},
 	}), cleanup, nil
+}
+
+func runTaskSync(ctx context.Context, syncer *tasksync.Syncer) {
+	_ = syncer.Sync(ctx)
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_ = syncer.Sync(ctx)
+		}
+	}
 }
 
 func oidcRedirectURL(cfg config.Config) string {

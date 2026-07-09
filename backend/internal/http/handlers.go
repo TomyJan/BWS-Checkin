@@ -19,6 +19,7 @@ import (
 	"bws-checkin/backend/internal/filestore"
 	"bws-checkin/backend/internal/qrcode"
 	"bws-checkin/backend/internal/store"
+	"bws-checkin/backend/internal/tasksync"
 	_ "golang.org/x/image/webp"
 )
 
@@ -30,6 +31,7 @@ type Deps struct {
 	Session              SessionConfig
 	Bilibili             *bilibili.Client
 	BilibiliCookieSecret string
+	TaskSync             *tasksync.Syncer
 }
 
 type Handler struct {
@@ -619,12 +621,47 @@ func (h Handler) groupTasks(w http.ResponseWriter, r *http.Request) {
 		writeNotFoundOrForbidden(w, err)
 		return
 	}
+	if h.deps.TaskSync != nil {
+		h.deps.TaskSync.EnsureFresh(r.Context())
+	}
 	tasks, err := h.deps.Store.GroupTasks(r.Context(), groupID)
 	if err != nil {
 		writeBusinessError(w, "tasks_load_failed", err.Error())
 		return
 	}
 	writeOK(w, map[string][]domain.TaskStatus{"tasks": tasks})
+}
+
+func (h Handler) taskSyncStatus(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.currentUser(w, r); !ok {
+		return
+	}
+	state, err := h.deps.Store.TaskSyncState(r.Context())
+	if err != nil {
+		writeBusinessError(w, "task_sync_status_failed", err.Error())
+		return
+	}
+	writeOK(w, map[string]store.TaskSyncState{"sync": state})
+}
+
+func (h Handler) syncTasks(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.currentUser(w, r); !ok {
+		return
+	}
+	if h.deps.TaskSync == nil {
+		writeBusinessError(w, "task_sync_disabled", "")
+		return
+	}
+	if err := h.deps.TaskSync.Sync(r.Context()); err != nil {
+		writeBusinessError(w, "task_sync_failed", err.Error())
+		return
+	}
+	state, err := h.deps.Store.TaskSyncState(r.Context())
+	if err != nil {
+		writeBusinessError(w, "task_sync_status_failed", err.Error())
+		return
+	}
+	writeOK(w, map[string]store.TaskSyncState{"sync": state})
 }
 
 func (h Handler) completeTask(w http.ResponseWriter, r *http.Request) {
