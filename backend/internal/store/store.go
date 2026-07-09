@@ -559,9 +559,11 @@ func (s *Store) groupMembers(ctx context.Context, groupID string) ([]domain.Memb
 	var members []domain.Member
 	for rows.Next() {
 		var member domain.Member
-		if err := rows.Scan(&member.ID, &member.DisplayName, &member.QRImageURL); err != nil {
+		var qrPath string
+		if err := rows.Scan(&member.ID, &member.DisplayName, &qrPath); err != nil {
 			return nil, err
 		}
+		member.QRImageURL = qrAPIURL(member.ID, qrPath)
 		members = append(members, member)
 	}
 	return members, rows.Err()

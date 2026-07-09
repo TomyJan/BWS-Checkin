@@ -54,6 +54,7 @@ func writeOK(w http.ResponseWriter, data any) {
 }
 
 func writeBusinessError(w http.ResponseWriter, code string, message string) {
+	message = businessErrorMessage(code, message)
 	writeJSON(w, http.StatusOK, apiResponse{OK: false, Error: &apiError{Code: code, Message: message}})
 }
 
@@ -355,13 +356,21 @@ func (h Handler) joinGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	groupID := input.GroupID
+	if groupID == "" {
+		writeBusinessError(w, "group_id_required", "")
+		return
+	}
 	if err := h.deps.Store.JoinGroup(r.Context(), groupID, user.ID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeBusinessError(w, "group_not_found", "")
+			return
+		}
 		if errors.Is(err, store.ErrGroupArchived) {
-			writeBusinessError(w, "group_archived", err.Error())
+			writeBusinessError(w, "group_archived", "")
 			return
 		}
 		if errors.Is(err, store.ErrGroupJoinLocked) {
-			writeBusinessError(w, "group_join_locked", err.Error())
+			writeBusinessError(w, "group_join_locked", "")
 			return
 		}
 		writeBusinessError(w, "group_join_failed", err.Error())
@@ -558,10 +567,43 @@ func validImageContent(ext string, body []byte) bool {
 
 func writeNotFoundOrForbidden(w http.ResponseWriter, err error) {
 	if errors.Is(err, sql.ErrNoRows) {
-		writeBusinessError(w, "group_access_denied", "group access denied")
+		writeBusinessError(w, "group_access_denied", "")
 		return
 	}
 	writeBusinessError(w, "request_failed", err.Error())
+}
+
+func businessErrorMessage(code string, fallback string) string {
+	messages := map[string]string{
+		"current_user_load_failed": "当前用户加载失败，请重新登录",
+		"file_required":            "请选择二维码图片",
+		"group_access_denied":      "互助组不存在或你无权访问",
+		"group_archived":           "互助组已归档，不能继续操作",
+		"group_id_conflict":        "互助组 ID 已存在或输入不合法",
+		"group_id_required":        "请输入互助组 ID",
+		"group_join_failed":        "加入互助组失败，请稍后重试",
+		"group_join_locked":        "互助组已锁定，暂时不能加入",
+		"group_not_found":          "互助组不存在",
+		"invalid_group_input":      "请填写完整的互助组信息",
+		"invalid_image":            "二维码图片无法识别",
+		"invalid_json":             "请求格式不正确",
+		"invalid_upload":           "上传内容无效",
+		"login_required":           "请先登录",
+		"owner_role_required":      "只有创建者可以执行此操作",
+		"qr_delete_failed":         "删除二维码失败，请稍后重试",
+		"qr_not_found":             "二维码图片不存在",
+		"qr_save_failed":           "保存二维码失败，请稍后重试",
+		"qr_update_failed":         "更新二维码失败，请稍后重试",
+		"unsupported_image_type":   "只支持 PNG、JPG、JPEG 或 WebP 图片",
+		"user_id_required":         "缺少用户 ID",
+	}
+	if message, ok := messages[code]; ok {
+		return message
+	}
+	if fallback == "" || strings.Contains(fallback, "sql:") {
+		return "操作失败，请稍后重试"
+	}
+	return fallback
 }
 
 type groupIDRequest struct {

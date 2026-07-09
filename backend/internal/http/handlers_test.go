@@ -237,6 +237,89 @@ func TestGroupsAndTasksFlow(t *testing.T) {
 	assertOK(t, w)
 }
 
+func TestGroupTasksUseAuthenticatedQRImageAPI(t *testing.T) {
+	s := newTestStore(t)
+	uploadDir := t.TempDir()
+	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: uploadDir})
+	ownerCookies := loginForTest(t, h, "Owner")
+	memberCookies := loginForTest(t, h, "Member")
+	memberID := userIDForCookies(t, h, memberCookies)
+
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/create", map[string]any{
+		"id": "bw2026-fri", "name": "BW2026 周五", "day": "friday",
+	})
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = multipartRequest(t, "/api/v1/me/qr/upload", "qr.png", validPNG(t))
+	for _, c := range memberCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = jsonRequest(t, http.MethodPost, "/api/v1/group/join", map[string]any{"groupId": "bw2026-fri"})
+	for _, c := range memberCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/group/tasks?groupId=bw2026-fri", nil)
+	for _, c := range ownerCookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	if strings.Contains(w.Body.String(), "/uploads/") {
+		t.Fatalf("group tasks must not expose uploads URL, got %s", w.Body.String())
+	}
+	qrURL := "/api/v1/user/qr?userId=" + memberID
+	if !strings.Contains(w.Body.String(), qrURL) {
+		t.Fatalf("expected authenticated QR API URL %q, got %s", qrURL, w.Body.String())
+	}
+
+	qrReq := httptest.NewRequest(http.MethodGet, qrURL, nil)
+	for _, c := range ownerCookies {
+		qrReq.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, qrReq)
+	if w.Code != http.StatusOK {
+		t.Fatalf("qr status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "image/png") {
+		t.Fatalf("content type = %q, want image/png", ct)
+	}
+}
+
+func TestJoinMissingGroupReturnsStableBusinessError(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true})
+	cookies := loginForTest(t, h, "TomyJan")
+
+	req := jsonRequest(t, http.MethodPost, "/api/v1/group/join", map[string]any{"groupId": "missing-group"})
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("join status = %d, want 200", w.Code)
+	}
+	assertBusinessError(t, w, "group_not_found")
+	if strings.Contains(w.Body.String(), "sql:") {
+		t.Fatalf("business error should not expose SQL detail, got %s", w.Body.String())
+	}
+}
+
 func TestDuplicateGroupReturnsBusinessErrorWithHTTP200(t *testing.T) {
 	s := newTestStore(t)
 	h := NewRouter(Deps{Store: s, DevAuth: true})
