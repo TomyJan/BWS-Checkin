@@ -6,6 +6,17 @@ body,
 
 body {
   margin: 0;
+  font-family:
+    "MiSans",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    "Noto Sans SC",
+    "Microsoft YaHei",
+    sans-serif;
 }
 
 * {

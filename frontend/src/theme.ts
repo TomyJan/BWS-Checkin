@@ -1,5 +1,18 @@
 import { createTheme } from "@mui/material/styles";
 
+export const fontFamily = [
+  '"MiSans"',
+  "-apple-system",
+  "BlinkMacSystemFont",
+  '"Segoe UI"',
+  "Roboto",
+  '"Helvetica Neue"',
+  "Arial",
+  '"Noto Sans SC"',
+  '"Microsoft YaHei"',
+  "sans-serif"
+].join(", ");
+
 export const appTheme = createTheme({
   cssVariables: {
     colorSchemeSelector: "media"
@@ -20,6 +33,9 @@ export const appTheme = createTheme({
   },
   shape: {
     borderRadius: 22
+  },
+  typography: {
+    fontFamily
   },
   components: {
     MuiButton: {
