@@ -106,6 +106,7 @@ export function GroupPage() {
 
   const tasks = tasksQuery.data?.tasks ?? [];
   const currentTask = tasks[Math.min(taskIndex, Math.max(tasks.length - 1, 0))];
+  const groupedTasks = useMemo(() => groupTasksForPicker(tasks), [tasks]);
   const members = currentTask?.members ?? [];
   const currentMember = members[Math.min(memberIndex, Math.max(members.length - 1, 0))];
   const currentMemberQR = qrImageURL(currentMember?.member);
@@ -460,14 +461,49 @@ export function GroupPage() {
 
       <Dialog open={taskPickerOpen} onClose={() => setTaskPickerOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>选择点位</DialogTitle>
-        <DialogContent>
-          <List>
-            {tasks.map((task) => (
-              <ListItemButton key={task.id} selected={task.id === currentTask?.id} onClick={() => selectTask(task)}>
-                <ListItemText primary={task.name} secondary={`${task.completedCount}/${task.totalCount}`} />
-              </ListItemButton>
+        <DialogContent sx={{ pt: 0 }}>
+          <Stack spacing={2}>
+            {groupedTasks.map((group) => (
+              <Box key={group.name}>
+                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 850, letterSpacing: 0 }}>
+                  {group.name}
+                </Typography>
+                <List disablePadding sx={{ display: "grid", gap: 1 }}>
+                  {group.tasks.map((task) => (
+                    <ListItemButton
+                      key={task.id}
+                      selected={task.id === currentTask?.id}
+                      onClick={() => selectTask(task)}
+                      sx={{
+                        alignItems: "stretch",
+                        border: 1,
+                        borderColor: task.id === currentTask?.id ? "primary.main" : "divider",
+                        borderRadius: 2,
+                        px: 1.5,
+                        py: 1.25
+                      }}
+                    >
+                      <Stack spacing={0.75} sx={{ width: "100%" }}>
+                        <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                          <Typography sx={{ fontWeight: 850 }}>{task.name}</Typography>
+                          <Chip size="small" color="primary" label={`乐园币 x${task.rewardCoins}`} />
+                        </Stack>
+                        <Typography sx={{ fontWeight: 700 }}>{task.title || task.name}</Typography>
+                        {task.description && (
+                          <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                            {task.description}
+                          </Typography>
+                        )}
+                        <Typography color="text.secondary" sx={{ fontSize: 13 }}>
+                          进度 {task.completedCount}/{task.totalCount}
+                        </Typography>
+                      </Stack>
+                    </ListItemButton>
+                  ))}
+                </List>
+              </Box>
             ))}
-          </List>
+          </Stack>
         </DialogContent>
       </Dialog>
       <Menu anchorEl={manageAnchor} open={Boolean(manageAnchor)} onClose={() => setManageAnchor(null)}>
@@ -523,4 +559,18 @@ function formatTime(value: string | null) {
 
 function currentUser(user?: User): User {
   return user ?? { id: "", displayName: "本机", avatarUrl: "", qrImageUrl: "" };
+}
+
+function groupTasksForPicker(tasks: TaskStatus[]) {
+  const groups: Array<{ name: string; tasks: TaskStatus[] }> = [];
+  for (const task of tasks) {
+    const name = task.groupName || "其他点位";
+    let group = groups.find((item) => item.name === name);
+    if (!group) {
+      group = { name, tasks: [] };
+      groups.push(group);
+    }
+    group.tasks.push(task);
+  }
+  return groups;
 }

@@ -63,8 +63,33 @@ describe("GroupPage", () => {
               tasks: [
                 {
                   id: "t1",
+                  groupName: "场馆打卡",
                   name: "彩虹补给站",
+                  title: "完成彩虹补给站互动",
+                  rewardCoins: 3,
+                  description: "在彩虹补给站完成互动并出示二维码。",
                   sortOrder: 1,
+                  completedCount: 0,
+                  totalCount: 1,
+                  members: [
+                    {
+                      member: { id: "u1", displayName: "Alice", qrImageUrl: "/uploads/u1.png" },
+                      completed: false,
+                      completedAt: null,
+                      updatedAt: null,
+                      checkedById: null,
+                      checkedByName: ""
+                    }
+                  ]
+                },
+                {
+                  id: "t2",
+                  groupName: "舞台任务",
+                  name: "舞台应援任务",
+                  title: "完成主舞台应援",
+                  rewardCoins: 5,
+                  description: "在主舞台完成应援任务并领取奖励。",
+                  sortOrder: 2,
                   completedCount: 0,
                   totalCount: 1,
                   members: [
@@ -100,6 +125,13 @@ describe("GroupPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /彩虹补给站/ }));
     expect(screen.getByText("选择点位")).toBeInTheDocument();
+    expect(screen.getByText("场馆打卡")).toBeInTheDocument();
+    expect(screen.getByText("完成彩虹补给站互动")).toBeInTheDocument();
+    expect(screen.getByText("乐园币 x3")).toBeInTheDocument();
+    expect(screen.getByText("在彩虹补给站完成互动并出示二维码。")).toBeInTheDocument();
+    expect(screen.getByText("舞台任务")).toBeInTheDocument();
+    expect(screen.getByText("完成主舞台应援")).toBeInTheDocument();
+    expect(screen.getByText("乐园币 x5")).toBeInTheDocument();
     expect(screen.getByText("BW2026 周五")).toBeInTheDocument();
   });
 });

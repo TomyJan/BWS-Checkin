@@ -571,10 +571,10 @@ func (s *Store) groupMembers(ctx context.Context, groupID string) ([]domain.Memb
 
 func (s *Store) enabledTasks(ctx context.Context) ([]domain.TaskStatus, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, sort_order
+		SELECT id, group_name, name, title, reward_coins, description, sort_order
 		FROM tasks
 		WHERE enabled = 1
-		ORDER BY sort_order ASC
+		ORDER BY sort_order ASC, id ASC
 	`)
 	if err != nil {
 		return nil, err
@@ -584,7 +584,7 @@ func (s *Store) enabledTasks(ctx context.Context) ([]domain.TaskStatus, error) {
 	var tasks []domain.TaskStatus
 	for rows.Next() {
 		var task domain.TaskStatus
-		if err := rows.Scan(&task.ID, &task.Name, &task.SortOrder); err != nil {
+		if err := rows.Scan(&task.ID, &task.GroupName, &task.Name, &task.Title, &task.RewardCoins, &task.Description, &task.SortOrder); err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, task)

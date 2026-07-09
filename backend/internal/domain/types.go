@@ -29,7 +29,11 @@ type Member struct {
 
 type TaskStatus struct {
 	ID             string             `json:"id"`
+	GroupName      string             `json:"groupName"`
 	Name           string             `json:"name"`
+	Title          string             `json:"title"`
+	RewardCoins    int                `json:"rewardCoins"`
+	Description    string             `json:"description"`
 	SortOrder      int                `json:"sortOrder"`
 	CompletedCount int                `json:"completedCount"`
 	TotalCount     int                `json:"totalCount"`

@@ -42,7 +42,11 @@ export interface MemberCompletion {
 
 export interface TaskStatus {
   id: string;
+  groupName: string;
   name: string;
+  title: string;
+  rewardCoins: number;
+  description: string;
   sortOrder: number;
   completedCount: number;
   totalCount: number;

@@ -75,6 +75,33 @@ func TestCompleteTaskIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestGroupTasksIncludeDisplayMetadata(t *testing.T) {
+	s := newTestStore(t)
+	owner := mustCreateUser(t, s, "oidc-owner", "Owner")
+	mustCreateGroup(t, s, "bw2026-fri", owner.ID)
+
+	tasks, err := s.GroupTasks(t.Context(), "bw2026-fri")
+	if err != nil {
+		t.Fatalf("group tasks: %v", err)
+	}
+	if len(tasks) == 0 {
+		t.Fatal("expected seeded tasks")
+	}
+	task := tasks[0]
+	if task.GroupName == "" {
+		t.Fatal("expected task group name")
+	}
+	if task.Title == "" {
+		t.Fatal("expected task title")
+	}
+	if task.RewardCoins <= 0 {
+		t.Fatalf("reward coins = %d, want positive", task.RewardCoins)
+	}
+	if task.Description == "" {
+		t.Fatal("expected task description")
+	}
+}
+
 func TestSyncTaskCompletionKeepsNewestState(t *testing.T) {
 	s := newTestStore(t)
 	owner := mustCreateUser(t, s, "oidc-owner", "Owner")
