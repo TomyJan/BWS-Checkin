@@ -16,6 +16,8 @@ import {
   MenuItem,
   Snackbar,
   Stack,
+  Tab,
+  Tabs,
   Typography
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -57,6 +59,7 @@ export function GroupPage() {
   const [taskIndex, setTaskIndex] = useState(0);
   const [memberIndex, setMemberIndex] = useState(0);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [selectedTaskGroup, setSelectedTaskGroup] = useState("");
   const [offlineSnapshot, setOfflineSnapshot] = useState(false);
   const [manageAnchor, setManageAnchor] = useState<HTMLElement | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -107,6 +110,8 @@ export function GroupPage() {
   const tasks = tasksQuery.data?.tasks ?? [];
   const currentTask = tasks[Math.min(taskIndex, Math.max(tasks.length - 1, 0))];
   const groupedTasks = useMemo(() => groupTasksForPicker(tasks), [tasks]);
+  const selectedTaskGroupName = selectedTaskGroup || currentTask?.groupName || groupedTasks[0]?.name || "";
+  const visibleTaskGroup = groupedTasks.find((item) => item.name === selectedTaskGroupName) ?? groupedTasks[0];
   const members = currentTask?.members ?? [];
   const currentMember = members[Math.min(memberIndex, Math.max(members.length - 1, 0))];
   const currentMemberQR = qrImageURL(currentMember?.member);
@@ -278,6 +283,11 @@ export function GroupPage() {
     if (!groupValue || !tasksQuery.data?.tasks) return;
     void saveGroupSnapshot({ group: groupValue, tasks: tasksQuery.data.tasks, savedAt: new Date().toISOString() });
   }, [group.data?.group, tasksQuery.data?.tasks]);
+
+  useEffect(() => {
+    if (!taskPickerOpen) return;
+    setSelectedTaskGroup(currentTask?.groupName || groupedTasks[0]?.name || "");
+  }, [currentTask?.groupName, groupedTasks, taskPickerOpen]);
 
   useEffect(() => {
     async function syncPending() {
@@ -459,51 +469,91 @@ export function GroupPage() {
         </Box>
       </Box>
 
-      <Dialog open={taskPickerOpen} onClose={() => setTaskPickerOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>选择点位</DialogTitle>
-        <DialogContent sx={{ pt: 0 }}>
-          <Stack spacing={2}>
-            {groupedTasks.map((group) => (
-              <Box key={group.name}>
-                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 850, letterSpacing: 0 }}>
-                  {group.name}
-                </Typography>
-                <List disablePadding sx={{ display: "grid", gap: 1 }}>
-                  {group.tasks.map((task) => (
-                    <ListItemButton
-                      key={task.id}
-                      selected={task.id === currentTask?.id}
-                      onClick={() => selectTask(task)}
-                      sx={{
-                        alignItems: "stretch",
-                        border: 1,
-                        borderColor: task.id === currentTask?.id ? "primary.main" : "divider",
-                        borderRadius: 2,
-                        px: 1.5,
-                        py: 1.25
-                      }}
-                    >
-                      <Stack spacing={0.75} sx={{ width: "100%" }}>
-                        <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-                          <Typography sx={{ fontWeight: 850 }}>{task.name}</Typography>
-                          <Chip size="small" color="primary" label={`乐园币 x${task.rewardCoins}`} />
-                        </Stack>
-                        <Typography sx={{ fontWeight: 700 }}>{task.title || task.name}</Typography>
-                        {task.description && (
-                          <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-                            {task.description}
-                          </Typography>
-                        )}
-                        <Typography color="text.secondary" sx={{ fontSize: 13 }}>
-                          进度 {task.completedCount}/{task.totalCount}
-                        </Typography>
-                      </Stack>
-                    </ListItemButton>
-                  ))}
-                </List>
-              </Box>
+      <Dialog open={taskPickerOpen} onClose={() => setTaskPickerOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ pb: 1 }}>
+          <Typography component="span" variant="h6" sx={{ fontWeight: 900 }}>
+            选择点位
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ px: 0, pt: 0, pb: 2 }}>
+          <Box sx={{ borderBottom: 1, borderColor: "divider", px: 2 }}>
+            <Tabs
+              value={selectedTaskGroupName}
+              onChange={(_event, value: string) => setSelectedTaskGroup(value)}
+              variant="scrollable"
+              scrollButtons="auto"
+              aria-label="点位分组"
+              sx={{
+                minHeight: 44,
+                "& .MuiTab-root": {
+                  minHeight: 44,
+                  px: 2,
+                  fontWeight: 850,
+                  letterSpacing: 0,
+                  textTransform: "none"
+                }
+              }}
+            >
+              {groupedTasks.map((group) => (
+                <Tab key={group.name} value={group.name} label={group.name} />
+              ))}
+            </Tabs>
+          </Box>
+
+          <List disablePadding sx={{ display: "grid", gap: 1.25, px: 2, pt: 2 }}>
+            {(visibleTaskGroup?.tasks ?? []).map((task) => (
+              <ListItemButton
+                key={task.id}
+                selected={task.id === currentTask?.id}
+                onClick={() => selectTask(task)}
+                sx={{
+                  alignItems: "stretch",
+                  border: 1,
+                  borderColor: task.id === currentTask?.id ? "primary.main" : "divider",
+                  borderRadius: 3,
+                  bgcolor: task.id === currentTask?.id ? "primary.main" : "background.paper",
+                  color: task.id === currentTask?.id ? "primary.contrastText" : "text.primary",
+                  px: 2,
+                  py: 1.75,
+                  "&.Mui-selected": {
+                    bgcolor: "primary.main",
+                    color: "primary.contrastText"
+                  },
+                  "&.Mui-selected:hover": {
+                    bgcolor: "primary.dark"
+                  }
+                }}
+              >
+                <Stack spacing={1} sx={{ width: "100%" }}>
+                  <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 1.5 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 900, lineHeight: 1.2 }}>{task.name}</Typography>
+                      <Typography sx={{ mt: 0.5, fontWeight: 750, lineHeight: 1.35 }}>{task.title || task.name}</Typography>
+                    </Box>
+                    <Chip
+                      size="small"
+                      label={`乐园币 x${task.rewardCoins}`}
+                      color={task.id === currentTask?.id ? "default" : "primary"}
+                      sx={{ flex: "0 0 auto", fontWeight: 800 }}
+                    />
+                  </Stack>
+                  {task.description && (
+                    <Typography sx={{ color: task.id === currentTask?.id ? "primary.contrastText" : "text.secondary", fontSize: 14, lineHeight: 1.55 }}>
+                      {task.description}
+                    </Typography>
+                  )}
+                  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, pt: 0.25 }}>
+                    <Typography sx={{ color: task.id === currentTask?.id ? "primary.contrastText" : "text.secondary", fontSize: 13 }}>
+                      完成进度
+                    </Typography>
+                    <Typography sx={{ fontWeight: 850, fontSize: 13 }}>
+                      {task.completedCount}/{task.totalCount}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </ListItemButton>
             ))}
-          </Stack>
+          </List>
         </DialogContent>
       </Dialog>
       <Menu anchorEl={manageAnchor} open={Boolean(manageAnchor)} onClose={() => setManageAnchor(null)}>
