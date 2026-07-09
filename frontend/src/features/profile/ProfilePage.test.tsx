@@ -92,17 +92,16 @@ describe("ProfilePage", () => {
     expect(screen.getByRole("heading", { name: "个人中心" })).toBeInTheDocument();
     expect(screen.queryByText(/a4fc8cfb-7dc8-485e-a270-76d18a44cdc7/)).not.toBeInTheDocument();
     expect(await screen.findByRole("img", { name: "我的二维码" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "更新二维码" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "更新上传二维码" })).toBeInTheDocument();
   });
 
-  test("supports Bilibili account binding and QR source switching", async () => {
+  test("supports Bilibili QR login polling and QR source switching", async () => {
     renderProfilePage();
 
-    expect(await screen.findByRole("button", { name: "绑定 B 站账号" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "绑定 B 站账号" }));
+    expect(await screen.findByRole("heading", { name: "B 站扫码登录" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "生成登录二维码" }));
     expect(await screen.findByRole("img", { name: "B 站登录二维码" })).toHaveAttribute("src", "https://passport.bilibili.com/qrcode");
-
-    fireEvent.click(screen.getByRole("button", { name: "检查登录状态" }));
+    expect(screen.queryByRole("button", { name: "检查登录状态" })).not.toBeInTheDocument();
     expect(await screen.findByText("BiliTomy")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "使用 B 站二维码" }));

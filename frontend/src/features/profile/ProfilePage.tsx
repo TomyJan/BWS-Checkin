@@ -1,6 +1,6 @@
-import { Alert, Avatar, Box, Button, Card, CardContent, Chip, Divider, Stack, Typography } from "@mui/material";
+import { Alert, Avatar, Box, Button, Card, CardContent, Chip, Divider, LinearProgress, Stack, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   api,
   createBilibiliLoginQRCode,
@@ -124,107 +124,130 @@ export function ProfilePage() {
   const hasQR = Boolean(user?.qrImageUrl || (currentSource === "bilibili_generated" && isBound));
   const qrSrc = qrImageURL(user);
   const loginQRImage = loginQR?.imageDataUrl ?? loginQR?.url ?? "";
+  const isPollingLogin = Boolean(loginQR && loginStatus !== "confirmed" && loginStatus !== "expired" && loginStatus !== "failed");
+
+  useEffect(() => {
+    if (!loginQR?.qrcodeKey || !isPollingLogin || pollLogin.isPending) return;
+    const delay = loginStatus ? 1800 : 0;
+    const timer = window.setTimeout(() => pollLogin.mutate(), delay);
+    return () => window.clearTimeout(timer);
+  }, [isPollingLogin, loginQR?.qrcodeKey, loginStatus, pollLogin]);
 
   return (
     <UserLayout maxWidth="lg">
       <Stack spacing={3}>
-        <Stack direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { sm: "end" }, justifyContent: "space-between", gap: 1.5 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { sm: "center" }, justifyContent: "space-between", gap: 1.5 }}>
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 900 }}>
               个人中心
             </Typography>
             <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-              管理账号绑定和互助二维码。
+              绑定 B 站账号或上传 BWS 二维码，互助组会使用这里的二维码。
             </Typography>
           </Box>
-          <Chip color={hasQR ? "primary" : "warning"} label={hasQR ? "二维码可用" : "缺少二维码"} sx={{ alignSelf: { xs: "flex-start", sm: "center" } }} />
+          <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}>
+            <Chip color={isBound ? "success" : "default"} label={isBound ? "B 站已绑定" : "B 站未绑定"} />
+            <Chip color={hasQR ? "primary" : "warning"} label={hasQR ? "二维码可用" : "缺少二维码"} />
+          </Stack>
         </Stack>
 
         {error && <Alert severity="error">{error}</Alert>}
 
-        <Card variant="outlined">
-          <CardContent>
-            <Stack spacing={2.5}>
-              <Stack direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { sm: "center" }, justifyContent: "space-between", gap: 2 }}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", lg: "420px minmax(0, 1fr)" },
+            gap: 2.5,
+            alignItems: "start"
+          }}
+        >
+          <Stack spacing={2}>
+          <Card variant="outlined">
+            <CardContent>
+              <Stack spacing={2.5}>
+                <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1.5 }}>
+                  <Box>
+                    <Typography variant="h6" component="h2" sx={{ fontWeight: 900 }}>
+                      B 站扫码登录
+                    </Typography>
+                    <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
+                      绑定后可由系统生成你的 BWS 二维码。
+                    </Typography>
+                  </Box>
+                  <Chip size="small" color={isBound ? "success" : "default"} label={isBound ? "已绑定" : "未绑定"} />
+                </Stack>
+
                 <Stack direction="row" sx={{ alignItems: "center", gap: 1.5, minWidth: 0 }}>
-                  <Avatar src={isBound ? account?.faceUrl : undefined} sx={{ width: 56, height: 56 }}>
-                    {(isBound ? account?.uname : user?.displayName)?.[0]}
+                  <Avatar src={account?.faceUrl} sx={{ width: 52, height: 52 }}>
+                    {(account?.uname ?? user?.displayName)?.[0]}
                   </Avatar>
                   <Box sx={{ minWidth: 0 }}>
-                    <Typography variant="h6" sx={{ fontWeight: 850 }} noWrap>
-                      {isBound ? account?.uname : "B 站账号"}
+                    <Typography sx={{ fontWeight: 850 }} noWrap>
+                      {isBound ? account?.uname : "尚未绑定 B 站账号"}
                     </Typography>
-                    <Stack direction="row" sx={{ alignItems: "center", gap: 1, flexWrap: "wrap", mt: 0.5 }}>
-                      <Chip size="small" color={isBound ? "success" : "default"} label={isBound ? "已绑定" : "未绑定"} />
-                      {loginStatus && <Chip size="small" color={loginStatus === "confirmed" ? "success" : "default"} label={loginStatusLabel(loginStatus)} />}
-                    </Stack>
+                    <Typography color="text.secondary" sx={{ fontSize: 13 }} noWrap>
+                      {isBound ? `UID ${account?.mid}` : "使用 B 站客户端扫码确认登录"}
+                    </Typography>
                   </Box>
                 </Stack>
+
+                {loginQR && (
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns: "128px minmax(0, 1fr)",
+                      gap: 2,
+                      alignItems: "center",
+                      border: 1,
+                      borderColor: "divider",
+                      borderRadius: 3,
+                      p: 1.5,
+                      bgcolor: "action.hover"
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={loginQRImage}
+                      alt="B 站登录二维码"
+                      sx={{
+                        width: 128,
+                        height: 128,
+                        borderRadius: 2,
+                        bgcolor: "background.paper",
+                        objectFit: "contain"
+                      }}
+                    />
+                    <Stack spacing={1} sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 850 }}>
+                        {loginStatus ? loginStatusLabel(loginStatus) : "等待扫码"}
+                      </Typography>
+                      <Typography color="text.secondary" sx={{ fontSize: 14 }}>
+                        {loginStatus === "confirmed" ? "B 站账号已绑定。" : "保持此页面打开，系统会自动刷新扫码状态。"}
+                      </Typography>
+                      {isPollingLogin && <LinearProgress sx={{ borderRadius: 999 }} />}
+                    </Stack>
+                  </Box>
+                )}
+
                 <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}>
-                  <Button variant={isBound ? "outlined" : "contained"} disabled={createLoginQR.isPending} onClick={() => createLoginQR.mutate()}>
-                    {isBound ? "重新绑定" : "绑定 B 站账号"}
+                  <Button variant="contained" disabled={createLoginQR.isPending} onClick={() => createLoginQR.mutate()}>
+                    {loginQR || isBound ? "重新生成登录二维码" : "生成登录二维码"}
                   </Button>
                   {isBound && (
                     <Button color="error" variant="text" disabled={unbindAccount.isPending} onClick={() => unbindAccount.mutate()}>
-                      解绑
+                      解绑 B 站账号
                     </Button>
                   )}
                 </Stack>
               </Stack>
+            </CardContent>
+          </Card>
 
-              {loginQR && (
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: { xs: "96px minmax(0, 1fr)", sm: "128px minmax(0, 1fr)" },
-                    gap: 2,
-                    alignItems: "center",
-                    border: 1,
-                    borderColor: "divider",
-                    borderRadius: 3,
-                    p: 2,
-                    bgcolor: "action.hover"
-                  }}
-                >
-                  <Box
-                    component="img"
-                    src={loginQRImage}
-                    alt="B 站登录二维码"
-                    sx={{
-                      width: { xs: 96, sm: 128 },
-                      height: { xs: 96, sm: 128 },
-                      borderRadius: 2,
-                      bgcolor: "background.paper",
-                      objectFit: "contain"
-                    }}
-                  />
-                  <Stack spacing={1.25} sx={{ minWidth: 0 }}>
-                    <Typography sx={{ fontWeight: 800 }}>扫码登录</Typography>
-                    <Typography color="text.secondary" sx={{ fontSize: 14 }}>
-                      {loginStatus ? loginStatusLabel(loginStatus) : "用 B 站客户端扫码后检查状态。"}
-                    </Typography>
-                    <Button variant="outlined" sx={{ alignSelf: "flex-start" }} disabled={pollLogin.isPending || !loginQR.qrcodeKey} onClick={() => pollLogin.mutate()}>
-                      检查登录状态
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
-            </Stack>
-          </CardContent>
-        </Card>
-
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", md: "360px minmax(0, 1fr)" },
-            gap: 2
-          }}
-        >
-          <Card variant="outlined" sx={{ alignSelf: "start" }}>
+          <Card variant="outlined">
             <CardContent>
               <Stack spacing={2.25}>
                 <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 850 }}>
+                  <Typography variant="h6" component="h2" sx={{ fontWeight: 900 }}>
                     二维码来源
                   </Typography>
                   <Typography color="text.secondary" sx={{ fontSize: 14, mt: 0.5 }}>
@@ -252,7 +275,7 @@ export function ProfilePage() {
                 <Divider />
                 <Stack spacing={1}>
                   <Button component="label" variant="outlined" startIcon={<CloudUploadIcon />} disabled={uploadQR.isPending}>
-                    {user?.qrImageUrl ? "更新二维码" : "上传二维码"}
+                    {user?.qrImageUrl ? "更新上传二维码" : "上传 BWS 二维码"}
                     <input
                       hidden
                       accept="image/png,image/jpeg,image/webp"
@@ -271,6 +294,7 @@ export function ProfilePage() {
               </Stack>
             </CardContent>
           </Card>
+          </Stack>
 
           <Card variant="outlined">
             <CardContent>
