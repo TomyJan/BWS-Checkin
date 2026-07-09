@@ -92,26 +92,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p "$GITHUB_WORKSPACE/dist" "$GITHUB_WORKSPACE/build"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
 
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
             go build -trimpath -ldflags="-s -w" \
-            -o "$GITHUB_WORKSPACE/build/bws-checkin-linux-amd64/bws-checkin" \
+            -o "$GITHUB_WORKSPACE/dist/bws-checkin-linux-amd64" \
             ./cmd/server
 
-          tar -C "$GITHUB_WORKSPACE/build/bws-checkin-linux-amd64" \
-            -czf "$GITHUB_WORKSPACE/dist/bws-checkin-linux-amd64.tar.gz" \
-            bws-checkin
+          chmod +x "$GITHUB_WORKSPACE/dist/bws-checkin-linux-amd64"
 
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
             go build -trimpath -ldflags="-s -w" \
-            -o "$GITHUB_WORKSPACE/build/bws-checkin-windows-amd64/bws-checkin.exe" \
+            -o "$GITHUB_WORKSPACE/dist/bws-checkin-windows-amd64.exe" \
             ./cmd/server
-
-          (
-            cd "$GITHUB_WORKSPACE/build/bws-checkin-windows-amd64"
-            zip -9 "$GITHUB_WORKSPACE/dist/bws-checkin-windows-amd64.zip" bws-checkin.exe
-          )
 
           (
             cd "$GITHUB_WORKSPACE/dist"
