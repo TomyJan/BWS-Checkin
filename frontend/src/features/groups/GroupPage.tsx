@@ -415,6 +415,7 @@ export function GroupPage() {
             component="button"
             type="button"
             className="task-trigger"
+            aria-label={`切换点位：${currentTask?.name ?? "无点位"}`}
             onClick={() => setTaskPickerOpen(true)}
           >
             <TaskIconBadge task={currentTask} testId="current-task-icon" />
@@ -643,7 +644,7 @@ function currentUser(user?: User): User {
 }
 
 function taskMetaLabel(task: TaskStatus) {
-  return `${task.groupName || "其他点位"} · 乐园币 x${task.rewardCoins} · 点击切换点位`;
+  return `${task.groupName || "其他点位"} · 乐园币 x${task.rewardCoins}`;
 }
 
 function taskIconKind(task?: TaskStatus) {

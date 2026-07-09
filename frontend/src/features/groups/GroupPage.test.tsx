@@ -123,7 +123,9 @@ describe("GroupPage", () => {
     expect(screen.queryByText(/正在查看/)).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Alice 的二维码" })).toHaveAttribute("src", "/api/v1/user/qr?userId=u1");
     expect(screen.getByTestId("current-task-icon")).toBeInTheDocument();
-    expect(screen.getByText("场馆打卡 · 乐园币 x3 · 点击切换点位")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "切换点位：彩虹补给站" })).toBeInTheDocument();
+    expect(screen.getByText("场馆打卡 · 乐园币 x3")).toBeInTheDocument();
+    expect(screen.queryByText(/点击切换点位/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /彩虹补给站/ }));
     expect(screen.getByText("选择点位")).toBeInTheDocument();
