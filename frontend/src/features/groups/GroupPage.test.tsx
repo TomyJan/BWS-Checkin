@@ -122,18 +122,22 @@ describe("GroupPage", () => {
     await waitFor(() => expect(screen.getByText("BW2026 周五")).toBeInTheDocument());
     expect(screen.queryByText(/正在查看/)).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Alice 的二维码" })).toHaveAttribute("src", "/api/v1/user/qr?userId=u1");
+    expect(screen.getByTestId("current-task-icon")).toBeInTheDocument();
+    expect(screen.getByText("场馆打卡 · 乐园币 x3 · 点击切换点位")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /彩虹补给站/ }));
     expect(screen.getByText("选择点位")).toBeInTheDocument();
     expect(screen.getByRole("tablist", { name: "点位分组" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "场馆打卡" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "舞台任务" })).toBeInTheDocument();
+    expect(screen.getByTestId("task-icon-t1")).toBeInTheDocument();
     expect(screen.getByText("完成彩虹补给站互动")).toBeInTheDocument();
     expect(screen.getByText("乐园币 x3")).toBeInTheDocument();
     expect(screen.getByText("在彩虹补给站完成互动并出示二维码。")).toBeInTheDocument();
     expect(screen.queryByText("完成主舞台应援")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "舞台任务" }));
+    expect(screen.getByTestId("task-icon-t2")).toBeInTheDocument();
     expect(screen.getByText("完成主舞台应援")).toBeInTheDocument();
     expect(screen.getByText("乐园币 x5")).toBeInTheDocument();
     expect(screen.queryByText("完成彩虹补给站互动")).not.toBeInTheDocument();

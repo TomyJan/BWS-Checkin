@@ -104,10 +104,10 @@ body {
 
 .task-sheet {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   max-width: 760px;
   margin: 0 auto;
-  padding: 15px;
+  padding: 14px;
   border: 1px solid rgb(255 255 255 / 0.16);
   border-radius: 28px;
   background: rgb(24 28 32 / 0.84);
@@ -115,14 +115,16 @@ body {
 }
 
 .task-progress {
-  min-width: 58px;
-  height: 40px;
+  min-width: 56px;
+  height: 34px;
   display: grid;
   place-items: center;
-  border-radius: 18px;
-  color: #9ef1e4;
-  background: rgb(117 216 200 / 0.18);
-  font-weight: 850;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: #fff;
+  background: #111827;
+  font-size: 14px;
+  font-weight: 950;
 }
 
 .member-grid {

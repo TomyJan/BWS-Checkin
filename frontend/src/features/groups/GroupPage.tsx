@@ -39,15 +39,19 @@ import {
   ArchiveIcon,
   ArrowBackIcon,
   CheckIcon,
+  CloseIcon,
   ContentCopyIcon,
   EditIcon,
   ExpandMoreIcon,
+  InteractionIcon,
   LockIcon,
   LockOpenIcon,
   MoreVertIcon,
   NavigateBeforeIcon,
   NavigateNextIcon,
-  PersonRemoveIcon
+  PersonRemoveIcon,
+  StageIcon,
+  VenueIcon
 } from "../../icons";
 import { EditGroupDialog } from "./GroupDialogs";
 
@@ -407,17 +411,36 @@ export function GroupPage() {
 
       <Box className="qr-overlay qr-overlay-bottom" onClick={(event) => event.stopPropagation()}>
         <Box className="task-sheet">
-          <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2 }}>
-            <Button color="inherit" endIcon={<ExpandMoreIcon />} onClick={() => setTaskPickerOpen(true)} sx={{ px: 0, fontSize: 18, fontWeight: 850 }}>
-              {currentTask?.name ?? "无点位"}
-            </Button>
+          <Button
+            className="task-trigger"
+            color="inherit"
+            fullWidth
+            onClick={() => setTaskPickerOpen(true)}
+            sx={{
+              justifyContent: "flex-start",
+              gap: 1.5,
+              minHeight: 74,
+              px: 1.75,
+              py: 1.5,
+              borderRadius: 5,
+              bgcolor: "#f8fafc",
+              color: "#111827",
+              textAlign: "left",
+              "&:hover": { bgcolor: "#eef4fb" }
+            }}
+          >
+            <TaskIconBadge task={currentTask} testId="current-task-icon" />
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography sx={{ overflow: "hidden", fontSize: 17, fontWeight: 950, lineHeight: 1.2, textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {currentTask?.name ?? "无点位"}
+              </Typography>
+              <Typography sx={{ mt: 0.5, color: "#64748b", fontSize: 12, fontWeight: 800, lineHeight: 1.25 }}>
+                {currentTask ? taskMetaLabel(currentTask) : "暂无可切换点位"}
+              </Typography>
+            </Box>
             <Box className="task-progress">{currentTask ? `${currentTask.completedCount}/${currentTask.totalCount}` : "0/0"}</Box>
-          </Stack>
-          <LinearProgress
-            variant="determinate"
-            value={currentTask && currentTask.totalCount > 0 ? (currentTask.completedCount / currentTask.totalCount) * 100 : 0}
-            sx={{ borderRadius: 999 }}
-          />
+            <ExpandMoreIcon sx={{ color: "#64748b", flex: "0 0 auto" }} />
+          </Button>
           <Box className="member-grid">
             {members.map((entry, index) => (
               <Box
@@ -469,14 +492,23 @@ export function GroupPage() {
         </Box>
       </Box>
 
-      <Dialog open={taskPickerOpen} onClose={() => setTaskPickerOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ pb: 1 }}>
-          <Typography component="span" variant="h6" sx={{ fontWeight: 900 }}>
+      <Dialog
+        open={taskPickerOpen}
+        onClose={() => setTaskPickerOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        slotProps={{ paper: { sx: { overflow: "hidden", borderRadius: 6 } } }}
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2, px: 2.5, pt: 2.25, pb: 1.25 }}>
+          <Typography component="span" variant="h6" sx={{ fontWeight: 950, letterSpacing: 0 }}>
             选择点位
           </Typography>
+          <IconButton aria-label="关闭点位选择" onClick={() => setTaskPickerOpen(false)} size="small">
+            <CloseIcon fontSize="small" />
+          </IconButton>
         </DialogTitle>
         <DialogContent sx={{ px: 0, pt: 0, pb: 2 }}>
-          <Box sx={{ borderBottom: 1, borderColor: "divider", px: 2 }}>
+          <Box sx={{ borderBottom: 1, borderColor: "divider", px: 2, pb: 1.5 }}>
             <Tabs
               value={selectedTaskGroupName}
               onChange={(_event, value: string) => setSelectedTaskGroup(value)}
@@ -484,69 +516,99 @@ export function GroupPage() {
               scrollButtons="auto"
               aria-label="点位分组"
               sx={{
-                minHeight: 44,
+                minHeight: 36,
                 "& .MuiTab-root": {
-                  minHeight: 44,
-                  px: 2,
-                  fontWeight: 850,
+                  minHeight: 36,
+                  mr: 1,
+                  px: 1.75,
+                  borderRadius: 999,
+                  bgcolor: "action.hover",
+                  color: "text.secondary",
+                  fontSize: 13,
+                  fontWeight: 900,
                   letterSpacing: 0,
                   textTransform: "none"
+                },
+                "& .Mui-selected": {
+                  bgcolor: "text.primary",
+                  color: "background.paper !important"
+                },
+                "& .MuiTabs-indicator": {
+                  display: "none"
                 }
               }}
             >
               {groupedTasks.map((group) => (
-                <Tab key={group.name} value={group.name} label={group.name} />
+                <Tab
+                  key={group.name}
+                  value={group.name}
+                  label={
+                    <Stack direction="row" sx={{ alignItems: "center", gap: 0.75 }}>
+                      <Box component="span" sx={{ width: 8, height: 8, borderRadius: 999, bgcolor: "currentColor", opacity: 0.72 }} />
+                      {group.name}
+                    </Stack>
+                  }
+                />
               ))}
             </Tabs>
           </Box>
 
-          <List disablePadding sx={{ display: "grid", gap: 1.25, px: 2, pt: 2 }}>
+          <List disablePadding sx={{ display: "grid", gap: 1.25, px: 2, pt: 1.75 }}>
             {(visibleTaskGroup?.tasks ?? []).map((task) => (
               <ListItemButton
                 key={task.id}
                 selected={task.id === currentTask?.id}
                 onClick={() => selectTask(task)}
                 sx={{
-                  alignItems: "stretch",
+                  display: "grid",
+                  gridTemplateColumns: "auto minmax(0, 1fr)",
+                  gap: 1.5,
+                  alignItems: "flex-start",
                   border: 1,
-                  borderColor: task.id === currentTask?.id ? "primary.main" : "divider",
-                  borderRadius: 3,
-                  bgcolor: task.id === currentTask?.id ? "primary.main" : "background.paper",
-                  color: task.id === currentTask?.id ? "primary.contrastText" : "text.primary",
-                  px: 2,
+                  borderColor: task.id === currentTask?.id ? "#91c7ff" : "divider",
+                  borderRadius: 5,
+                  bgcolor: task.id === currentTask?.id ? "#eaf4ff" : "background.paper",
+                  color: "text.primary",
+                  px: 1.75,
                   py: 1.75,
                   "&.Mui-selected": {
-                    bgcolor: "primary.main",
-                    color: "primary.contrastText"
+                    bgcolor: "#eaf4ff",
+                    color: "text.primary"
                   },
                   "&.Mui-selected:hover": {
-                    bgcolor: "primary.dark"
+                    bgcolor: "#dcebff"
                   }
                 }}
               >
-                <Stack spacing={1} sx={{ width: "100%" }}>
+                <TaskIconBadge task={task} testId={`task-icon-${task.id}`} />
+                <Stack spacing={0.85} sx={{ width: "100%", minWidth: 0 }}>
                   <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 1.5 }}>
                     <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 900, lineHeight: 1.2 }}>{task.name}</Typography>
-                      <Typography sx={{ mt: 0.5, fontWeight: 750, lineHeight: 1.35 }}>{task.title || task.name}</Typography>
+                      <Typography sx={{ overflow: "hidden", fontSize: 15, fontWeight: 950, lineHeight: 1.25, textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {task.name}
+                      </Typography>
+                      <Typography sx={{ mt: 0.75, color: "#1f2937", fontSize: 14, fontWeight: 850, lineHeight: 1.35 }}>
+                        {task.title || task.name}
+                      </Typography>
                     </Box>
                     <Chip
                       size="small"
                       label={`乐园币 x${task.rewardCoins}`}
-                      color={task.id === currentTask?.id ? "default" : "primary"}
-                      sx={{ flex: "0 0 auto", fontWeight: 800 }}
+                      sx={{ flex: "0 0 auto", bgcolor: "#fff4d6", color: "#8a5a00", fontWeight: 950 }}
                     />
                   </Stack>
                   {task.description && (
-                    <Typography sx={{ color: task.id === currentTask?.id ? "primary.contrastText" : "text.secondary", fontSize: 14, lineHeight: 1.55 }}>
+                    <Typography sx={{ color: "text.secondary", fontSize: 13, lineHeight: 1.45 }}>
                       {task.description}
                     </Typography>
                   )}
-                  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, pt: 0.25 }}>
-                    <Typography sx={{ color: task.id === currentTask?.id ? "primary.contrastText" : "text.secondary", fontSize: 13 }}>
-                      完成进度
-                    </Typography>
-                    <Typography sx={{ fontWeight: 850, fontSize: 13 }}>
+                  <Box sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 1.25, pt: 0.5 }}>
+                    <LinearProgress
+                      variant="determinate"
+                      value={task.totalCount > 0 ? (task.completedCount / task.totalCount) * 100 : 0}
+                      sx={{ height: 7, borderRadius: 999, bgcolor: "#e2e8f0" }}
+                    />
+                    <Typography sx={{ color: "text.secondary", fontWeight: 900, fontSize: 12 }}>
                       {task.completedCount}/{task.totalCount}
                     </Typography>
                   </Box>
@@ -609,6 +671,44 @@ function formatTime(value: string | null) {
 
 function currentUser(user?: User): User {
   return user ?? { id: "", displayName: "本机", avatarUrl: "", qrImageUrl: "" };
+}
+
+function taskMetaLabel(task: TaskStatus) {
+  return `${task.groupName || "其他点位"} · 乐园币 x${task.rewardCoins} · 点击切换点位`;
+}
+
+function taskIconKind(task?: TaskStatus) {
+  const text = `${task?.groupName ?? ""} ${task?.name ?? ""} ${task?.title ?? ""}`;
+  if (/舞台|应援|麦克风|演出/.test(text)) return "stage";
+  if (/互动|合影|伙伴|社交|集章/.test(text)) return "interaction";
+  return "venue";
+}
+
+function TaskIconBadge({ task, testId }: { task?: TaskStatus; testId: string }) {
+  const kind = taskIconKind(task);
+  const config = {
+    venue: { Icon: VenueIcon, bgcolor: "#eaf4ff", color: "#1769c2" },
+    stage: { Icon: StageIcon, bgcolor: "#fff1f2", color: "#be123c" },
+    interaction: { Icon: InteractionIcon, bgcolor: "#edfdf4", color: "#15803d" }
+  }[kind];
+  const Icon = config.Icon;
+  return (
+    <Box
+      data-testid={testId}
+      sx={{
+        width: 46,
+        height: 46,
+        display: "grid",
+        placeItems: "center",
+        flex: "0 0 auto",
+        borderRadius: 4,
+        bgcolor: config.bgcolor,
+        color: config.color
+      }}
+    >
+      <Icon sx={{ fontSize: 25 }} />
+    </Box>
+  );
 }
 
 function groupTasksForPicker(tasks: TaskStatus[]) {

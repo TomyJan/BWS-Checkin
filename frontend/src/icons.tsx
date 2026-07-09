@@ -48,6 +48,14 @@ export function ContentCopyIcon(props: SvgIconProps) {
   );
 }
 
+export function CloseIcon(props: SvgIconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.41L10.59 13.41 4.29 19.7 2.88 18.29 9.17 12 2.88 5.71 4.29 4.3l6.3 6.29 6.3-6.29z" />
+    </SvgIcon>
+  );
+}
+
 export function DeleteIcon(props: SvgIconProps) {
   return (
     <SvgIcon {...props}>
@@ -76,6 +84,14 @@ export function GroupsIcon(props: SvgIconProps) {
   return (
     <SvgIcon {...props}>
       <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+    </SvgIcon>
+  );
+}
+
+export function InteractionIcon(props: SvgIconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M7.5 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm9.5 2a4 4 0 1 1 0-8 4 4 0 0 1 0 8zM2.5 21c.7-4.1 3.1-6.2 7.2-6.2m4.1 6.2c.5-3.1 2.4-4.7 5.7-4.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
     </SvgIcon>
   );
 }
@@ -124,6 +140,22 @@ export function PersonRemoveIcon(props: SvgIconProps) {
   return (
     <SvgIcon {...props}>
       <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-8 2c-2.67 0-8 1.34-8 4v2h11.5c-.32-.61-.5-1.29-.5-2 0-1.48.8-2.77 2-3.46C10.07 14.2 8.11 14 7 14zm10 1v2h6v-2h-6z" />
+    </SvgIcon>
+  );
+}
+
+export function StageIcon(props: SvgIconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M12 3v10m-4-6h8M6 21h12m-9-8h6l2 8H7z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+    </SvgIcon>
+  );
+}
+
+export function VenueIcon(props: SvgIconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M4 10h16M5 10l7-6 7 6M6 10v9m4-9v9m4-9v9m4-9v9M4 19h16" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
     </SvgIcon>
   );
 }
