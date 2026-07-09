@@ -37,6 +37,21 @@ func BWSPNG(mid string) ([]byte, error) {
 	return goqrcode.Encode(qrURL, goqrcode.Medium, 1024)
 }
 
+func PNGDataURL(value string, size int) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", errors.New("qrcode value is required")
+	}
+	if size <= 0 {
+		size = 256
+	}
+	png, err := goqrcode.Encode(value, goqrcode.Medium, size)
+	if err != nil {
+		return "", err
+	}
+	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(png), nil
+}
+
 func encryptBWSMID(mid string) (string, error) {
 	block, err := aes.NewCipher([]byte(bwsAESKey))
 	if err != nil {

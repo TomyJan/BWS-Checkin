@@ -282,11 +282,17 @@ func (h Handler) createBilibiliLoginQRCode(w http.ResponseWriter, r *http.Reques
 		writeBusinessError(w, "bilibili_qrcode_create_failed", err.Error())
 		return
 	}
+	imageDataURL, err := qrcode.PNGDataURL(qr.URL, 320)
+	if err != nil {
+		writeBusinessError(w, "bilibili_qrcode_image_failed", err.Error())
+		return
+	}
 	writeOK(w, map[string]any{
 		"qrcode": map[string]any{
-			"url":       qr.URL,
-			"qrcodeKey": qr.QRCodeKey,
-			"expiresAt": qr.ExpiresAt,
+			"url":          qr.URL,
+			"qrcodeKey":    qr.QRCodeKey,
+			"expiresAt":    qr.ExpiresAt,
+			"imageDataUrl": imageDataURL,
 		},
 	})
 }

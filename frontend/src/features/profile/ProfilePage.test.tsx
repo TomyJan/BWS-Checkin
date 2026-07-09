@@ -5,6 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ProfilePage } from "./ProfilePage";
 
+let loginQRCodeImageDataUrl: string | undefined;
+
 function renderProfilePage() {
   const client = new QueryClient({
     defaultOptions: {
@@ -24,6 +26,7 @@ function renderProfilePage() {
 describe("ProfilePage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    loginQRCodeImageDataUrl = "data:image/png;base64,loginqr";
     let bilibiliBound = false;
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -57,7 +60,7 @@ describe("ProfilePage", () => {
         return Promise.resolve(
           Response.json({
             ok: true,
-            data: { qrcode: { url: "https://passport.bilibili.com/qrcode", qrcodeKey: "qr-key", expiresAt: "2026-07-10T12:03:00Z" } }
+            data: { qrcode: { url: "https://passport.bilibili.com/qrcode", qrcodeKey: "qr-key", expiresAt: "2026-07-10T12:03:00Z", imageDataUrl: loginQRCodeImageDataUrl } }
           })
         );
       }
@@ -100,12 +103,22 @@ describe("ProfilePage", () => {
 
     expect(await screen.findByRole("heading", { name: "B 站扫码登录" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "生成登录二维码" }));
-    expect(await screen.findByRole("img", { name: "B 站登录二维码" })).toHaveAttribute("src", "https://passport.bilibili.com/qrcode");
+    expect(await screen.findByRole("img", { name: "B 站登录二维码" })).toHaveAttribute("src", "data:image/png;base64,loginqr");
     expect(screen.queryByRole("button", { name: "检查登录状态" })).not.toBeInTheDocument();
     expect(await screen.findByText("BiliTomy")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "使用 B 站二维码" }));
-    await waitFor(() => expect(screen.getByText("B 站账号生成")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "B 站生成" }));
+    await waitFor(() => expect(screen.getByText("当前使用：B 站生成")).toBeInTheDocument());
     expect(screen.getByRole("img", { name: "我的二维码" })).toHaveAttribute("src", "/api/v1/user/qr?userId=a4fc8cfb-7dc8-485e-a270-76d18a44cdc7");
+  });
+
+  test("does not render the Bilibili login URL as an image when image data is missing", async () => {
+    loginQRCodeImageDataUrl = undefined;
+    renderProfilePage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "生成登录二维码" }));
+
+    await waitFor(() => expect(screen.getByText("登录二维码暂不可用")).toBeInTheDocument());
+    expect(screen.queryByRole("img", { name: "B 站登录二维码" })).not.toBeInTheDocument();
   });
 });

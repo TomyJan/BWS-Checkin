@@ -339,6 +339,9 @@ func TestBilibiliLoginQRCodeFlowBindsAccountAndGeneratesQR(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "qr-key") || !strings.Contains(w.Body.String(), "https://passport.bilibili.com/qrcode") {
 		t.Fatalf("unexpected qrcode create response: %s", w.Body.String())
 	}
+	if !strings.Contains(w.Body.String(), `"imageDataUrl":"data:image/png;base64,`) {
+		t.Fatalf("expected qrcode image data URL in response: %s", w.Body.String())
+	}
 
 	req = jsonRequest(t, http.MethodPost, "/api/v1/bilibili/login/qrcode/poll", map[string]any{"qrcodeKey": "qr-key"})
 	for _, c := range cookies {
