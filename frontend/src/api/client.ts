@@ -1,3 +1,10 @@
+import type {
+  BilibiliAccountResponse,
+  BilibiliLoginPollResponse,
+  BilibiliLoginQRCodeResponse,
+  MeResponse
+} from "./types";
+
 const API_BASE = "/api/v1";
 
 interface ApiEnvelope<T> {
@@ -40,4 +47,34 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(envelope.error?.code ?? "business_error", envelope.error?.message ?? "");
   }
   return envelope.data as T;
+}
+
+export function getMe() {
+  return api<MeResponse>("/me");
+}
+
+export function getBilibiliAccount() {
+  return api<BilibiliAccountResponse>("/bilibili/account");
+}
+
+export function createBilibiliLoginQRCode() {
+  return api<BilibiliLoginQRCodeResponse>("/bilibili/login/qrcode/create", { method: "POST" });
+}
+
+export function pollBilibiliLoginQRCode(qrcodeKey: string) {
+  return api<BilibiliLoginPollResponse>("/bilibili/login/qrcode/poll", {
+    method: "POST",
+    body: JSON.stringify({ qrcodeKey })
+  });
+}
+
+export function unbindBilibiliAccount() {
+  return api<{ ok: boolean }>("/bilibili/account/unbind", { method: "POST" });
+}
+
+export function setQRSource(source: "uploaded" | "bilibili_generated") {
+  return api<MeResponse>("/me/qr/source/set", {
+    method: "POST",
+    body: JSON.stringify({ source })
+  });
 }

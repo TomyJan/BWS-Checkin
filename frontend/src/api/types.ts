@@ -3,6 +3,35 @@ export interface User {
   displayName: string;
   avatarUrl: string;
   qrImageUrl: string;
+  qrSource: "uploaded" | "bilibili_generated";
+}
+
+export interface BilibiliAccount {
+  mid: string;
+  uname: string;
+  faceUrl: string;
+  cookieExpiresAt?: string | null;
+  lastValidatedAt?: string | null;
+}
+
+export interface BilibiliAccountResponse {
+  bound: boolean;
+  account?: BilibiliAccount;
+}
+
+export interface BilibiliLoginQRCodeResponse {
+  qrcode: {
+    url: string;
+    qrcodeKey: string;
+    expiresAt: string;
+    imageDataUrl?: string;
+  };
+}
+
+export interface BilibiliLoginPollResponse {
+  status: "pending_scan" | "pending_confirm" | "expired" | "confirmed" | "failed";
+  message?: string;
+  account?: BilibiliAccount;
 }
 
 export interface Group {

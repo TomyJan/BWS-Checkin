@@ -640,7 +640,7 @@ function formatTime(value: string | null) {
 }
 
 function currentUser(user?: User): User {
-  return user ?? { id: "", displayName: "本机", avatarUrl: "", qrImageUrl: "" };
+  return user ?? { id: "", displayName: "本机", avatarUrl: "", qrImageUrl: "", qrSource: "uploaded" };
 }
 
 function taskMetaLabel(task: TaskStatus) {
