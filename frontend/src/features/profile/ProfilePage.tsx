@@ -140,8 +140,7 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (!loginQR?.qrcodeKey || !isPollingLogin || pollLogin.isPending) return;
-    const delay = loginStatus ? 1800 : 0;
-    const timer = window.setTimeout(() => pollLogin.mutate(), delay);
+    const timer = window.setTimeout(() => pollLogin.mutate(), 2000);
     return () => window.clearTimeout(timer);
   }, [isPollingLogin, loginQR?.qrcodeKey, loginStatus, pollLogin]);
 
@@ -165,7 +164,16 @@ export function ProfilePage() {
 
         {error && <Alert severity="error">{error}</Alert>}
 
-        <Paper variant="outlined" sx={{ overflow: "hidden", borderRadius: 4, bgcolor: "background.paper" }}>
+        <Paper
+          data-testid="profile-workbench"
+          variant="outlined"
+          sx={{
+            overflow: "hidden",
+            borderRadius: 4,
+            bgcolor: "background.paper",
+            boxShadow: "0 24px 70px rgba(15, 23, 42, 0.08)"
+          }}
+        >
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "380px minmax(0, 1fr)" }, minHeight: { lg: 650 } }}>
             <Stack
               spacing={2.5}
@@ -330,7 +338,7 @@ export function ProfilePage() {
               </Paper>
             </Stack>
 
-            <Stack spacing={2.5} sx={{ p: { xs: 2, sm: 3 } }}>
+            <Stack spacing={2.25} sx={{ p: { xs: 2, sm: 3 }, minHeight: { lg: 650 } }}>
               <Stack direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { sm: "center" }, justifyContent: "space-between", gap: 1.5 }}>
                 <Box>
                   <Typography variant="h6" sx={{ fontWeight: 900 }}>
@@ -347,6 +355,7 @@ export function ProfilePage() {
                 sx={{
                   display: "grid",
                   placeItems: "center",
+                  flex: 1,
                   minHeight: { xs: 360, md: 520 },
                   border: 1,
                   borderColor: "divider",
@@ -358,11 +367,33 @@ export function ProfilePage() {
               >
                 {qrSrc ? (
                   <Box
-                    component="img"
-                    src={qrSrc}
-                    alt="我的二维码"
-                    sx={{ width: "100%", height: "100%", maxHeight: 560, objectFit: "contain", borderRadius: 3, bgcolor: "background.paper" }}
-                  />
+                    data-testid="current-qr-device"
+                    sx={{
+                      width: "min(360px, 100%)",
+                      aspectRatio: "9 / 14",
+                      border: "10px solid",
+                      borderColor: "text.primary",
+                      borderRadius: 5,
+                      bgcolor: "#fff",
+                      boxShadow: "0 30px 80px rgba(15, 23, 42, 0.16)",
+                      display: "grid",
+                      placeItems: "center",
+                      p: { xs: 2, sm: 3 }
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={qrSrc}
+                      alt="我的二维码"
+                      sx={{
+                        width: "100%",
+                        aspectRatio: "1 / 1",
+                        objectFit: "contain",
+                        borderRadius: 2,
+                        bgcolor: "#fff"
+                      }}
+                    />
+                  </Box>
                 ) : (
                   <Stack sx={{ alignItems: "center", gap: 1, color: "text.secondary", textAlign: "center", px: 2 }}>
                     <Typography variant="h6" sx={{ fontWeight: 850, color: "text.primary" }}>
@@ -374,6 +405,22 @@ export function ProfilePage() {
                   </Stack>
                 )}
               </Box>
+
+              <Stack direction="row" sx={{ justifyContent: "flex-end", flexWrap: "wrap", gap: 1 }}>
+                <Button component="label" variant="outlined" startIcon={<CloudUploadIcon />} disabled={uploadQR.isPending}>
+                  替换当前图片
+                  <input
+                    hidden
+                    accept="image/png,image/jpeg,image/webp"
+                    type="file"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.currentTarget.value = "";
+                      if (file) uploadQR.mutate(file);
+                    }}
+                  />
+                </Button>
+              </Stack>
             </Stack>
           </Box>
         </Paper>

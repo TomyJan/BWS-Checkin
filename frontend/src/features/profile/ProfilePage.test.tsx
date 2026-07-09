@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ProfilePage } from "./ProfilePage";
 
 let loginQRCodeImageDataUrl: string | undefined;
+let bilibiliPollRequests = 0;
 
 function renderProfilePage() {
   const client = new QueryClient({
@@ -27,6 +28,7 @@ describe("ProfilePage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     loginQRCodeImageDataUrl = "data:image/png;base64,loginqr";
+    bilibiliPollRequests = 0;
     let bilibiliBound = false;
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -65,6 +67,7 @@ describe("ProfilePage", () => {
         );
       }
       if (url.endsWith("/api/v1/bilibili/login/qrcode/poll")) {
+        bilibiliPollRequests += 1;
         bilibiliBound = true;
         return Promise.resolve(
           Response.json({
@@ -93,6 +96,8 @@ describe("ProfilePage", () => {
     expect(screen.getByRole("link", { name: "个人中心" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: /TomyJan/ })).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "个人中心" })).toBeInTheDocument();
+    expect(screen.getByTestId("profile-workbench")).toBeInTheDocument();
+    expect(screen.getByTestId("current-qr-device")).toBeInTheDocument();
     expect(screen.queryByText(/a4fc8cfb-7dc8-485e-a270-76d18a44cdc7/)).not.toBeInTheDocument();
     expect(await screen.findByRole("img", { name: "我的二维码" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "更新上传二维码" })).toBeInTheDocument();
@@ -110,7 +115,12 @@ describe("ProfilePage", () => {
     expect(screen.getByText("等待 B 站客户端扫码")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "等待扫码" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "检查登录状态" })).not.toBeInTheDocument();
-    expect(await screen.findByText("BiliTomy")).toBeInTheDocument();
+    expect(bilibiliPollRequests).toBe(0);
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    expect(bilibiliPollRequests).toBe(0);
+    expect(screen.queryByText("BiliTomy")).not.toBeInTheDocument();
+    expect(await screen.findByText("BiliTomy", undefined, { timeout: 2600 })).toBeInTheDocument();
+    expect(bilibiliPollRequests).toBe(1);
 
     fireEvent.click(screen.getByRole("button", { name: "B 站生成" }));
     await waitFor(() => expect(screen.getAllByText("B 站生成").length).toBeGreaterThan(0));
