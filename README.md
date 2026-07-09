@@ -42,6 +42,7 @@ go test ./...
 
 ```powershell
 cd frontend
+pnpm test
 pnpm build
 ```
 
