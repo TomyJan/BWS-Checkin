@@ -278,7 +278,7 @@ export function ProfilePage() {
                           {linked ? (
                             <Chip size="small" color="success" label="已绑定" />
                           ) : (
-                            <Button size="small" variant="outlined" href={`/auth/oauth/${provider.id}/login`} sx={{ borderRadius: 999 }}>
+                            <Button size="small" variant="outlined" href={`/api/v1/auth/oauth/${provider.id}/login`} sx={{ borderRadius: 999 }}>
                               绑定 {provider.name}
                             </Button>
                           )}

@@ -369,7 +369,7 @@ func setOIDCState(w http.ResponseWriter, state string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     oidcStateCookieName,
 		Value:    state,
-		Path:     "/auth/oidc",
+		Path:     "/api/v1/auth/oidc",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -379,7 +379,7 @@ func clearOIDCState(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     oidcStateCookieName,
 		Value:    "",
-		Path:     "/auth/oidc",
+		Path:     "/api/v1/auth/oidc",
 		MaxAge:   -1,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,

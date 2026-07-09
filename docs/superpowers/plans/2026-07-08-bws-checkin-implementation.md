@@ -18,7 +18,7 @@
 - 创建：`backend/cmd/server/main.go`，HTTP 服务入口。
 - 创建：`backend/internal/app/app.go`，组装配置、数据库、路由和静态文件服务。
 - 创建：`backend/internal/config/config.go`，读取端口、数据库路径、上传目录、开发登录开关和 OIDC 配置。
-- 创建：`backend/internal/http/router.go`，注册 `/api/v1`、`/auth/oidc` 和健康检查路由。
+- 创建：`backend/internal/http/router.go`，注册 `/api/v1`、`/api/v1/auth/oidc` 和健康检查路由。
 - 创建：`backend/internal/http/session.go`，Session Cookie 读写和鉴权中间件。
 - 创建：`backend/internal/http/handlers.go`，API handler。
 - 创建：`backend/internal/store/store.go`，SQLite 访问层。
@@ -151,7 +151,7 @@ import (
 
 func NewRouter() http.Handler {
 	r := chi.NewRouter()
-	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/api/v1/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})

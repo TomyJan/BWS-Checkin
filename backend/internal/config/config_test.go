@@ -4,7 +4,7 @@ import "testing"
 
 func TestLoadOAuthProvidersFromJSON(t *testing.T) {
 	t.Setenv("BWS_DEV_AUTH", "1")
-	t.Setenv("BWS_OAUTH_PROVIDERS", `[{"id":"qq","name":"QQ 登录","type":"qq","clientId":"qq-client","clientSecret":"qq-secret","redirectUrl":"https://bws.example.com/auth/oauth/qq/callback"}]`)
+	t.Setenv("BWS_OAUTH_PROVIDERS", `[{"id":"qq","name":"QQ 登录","type":"qq","clientId":"qq-client","clientSecret":"qq-secret","redirectUrl":"https://bws.example.com/api/v1/auth/oauth/qq/callback"}]`)
 
 	cfg := Load()
 	if len(cfg.OAuthProviders) != 1 {

@@ -92,7 +92,7 @@ func (c Config) Validate() error {
 			RedirectURL:  c.OIDCRedirectURL,
 		}}
 		if providers[0].RedirectURL == "" && c.PublicBase != "" {
-			providers[0].RedirectURL = c.PublicBase + "/auth/oauth/oidc/callback"
+			providers[0].RedirectURL = c.PublicBase + "/api/v1/auth/oauth/oidc/callback"
 		}
 	}
 	if len(providers) == 0 {
@@ -134,7 +134,7 @@ func loadOAuthProviders(cfg Config) []OAuthProviderConfig {
 	if cfg.OIDCIssuerURL != "" || cfg.OIDCClientID != "" || cfg.OIDCClientSecret != "" {
 		redirectURL := cfg.OIDCRedirectURL
 		if redirectURL == "" {
-			redirectURL = cfg.PublicBase + "/auth/oauth/oidc/callback"
+			redirectURL = cfg.PublicBase + "/api/v1/auth/oauth/oidc/callback"
 		}
 		providers = append(providers, OAuthProviderConfig{
 			ID:           env("BWS_OIDC_ID", "oidc"),
@@ -154,7 +154,7 @@ func loadOAuthProviders(cfg Config) []OAuthProviderConfig {
 			providers[index].Name = providers[index].ID
 		}
 		if providers[index].RedirectURL == "" && cfg.PublicBase != "" && providers[index].ID != "" {
-			providers[index].RedirectURL = cfg.PublicBase + "/auth/oauth/" + providers[index].ID + "/callback"
+			providers[index].RedirectURL = cfg.PublicBase + "/api/v1/auth/oauth/" + providers[index].ID + "/callback"
 		}
 	}
 	return providers

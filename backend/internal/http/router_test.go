@@ -13,7 +13,7 @@ import (
 func TestHealthzReturnsOK(t *testing.T) {
 	handler := NewRouter(Deps{})
 
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/healthz", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -57,7 +57,7 @@ func TestRouterWritesStructuredRequestLog(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&out, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	handler := NewRouterWithLogger(Deps{}, logger)
 
-	req := httptest.NewRequest(http.MethodGet, "/healthz?secret=hidden", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/healthz?secret=hidden", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -71,8 +71,8 @@ func TestRouterWritesStructuredRequestLog(t *testing.T) {
 	if entry["method"] != http.MethodGet {
 		t.Fatalf("method = %v, want %s", entry["method"], http.MethodGet)
 	}
-	if entry["path"] != "/healthz" {
-		t.Fatalf("path = %v, want /healthz", entry["path"])
+	if entry["path"] != "/api/v1/healthz" {
+		t.Fatalf("path = %v, want /api/v1/healthz", entry["path"])
 	}
 	if _, ok := entry["duration_ms"].(float64); !ok {
 		t.Fatalf("duration_ms missing or not numeric: %#v", entry["duration_ms"])

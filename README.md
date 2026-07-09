@@ -22,7 +22,7 @@ pnpm install
 pnpm dev
 ```
 
-前端默认监听 `http://127.0.0.1:5173`，并通过 Vite proxy 转发 `/api` 和 `/auth` 到后端。
+前端默认监听 `http://127.0.0.1:5173`，并通过 Vite proxy 转发 `/api` 到后端。
 
 ### 一键开发脚本
 
@@ -81,12 +81,12 @@ Release 工作流会自动执行上述流程，并发布 Linux x64 与 Windows x
 
 ## 路由约定
 
-后端负责处理以下路径：
+后端负责处理 `/api/v1/*` 路径：
 
 - `/api/v1/*`：业务 API，只使用 `GET` 和 `POST`，响应体使用业务 `ok/error` 表示业务状态。
-- `/auth/oauth/*`：多 OAuth 渠道登录与回调。
-- `/auth/oidc/*`：旧版 OIDC 登录与回调，保留兼容。
-- `/healthz`：健康检查。
+- `/api/v1/auth/oauth/*`：多 OAuth 渠道登录与回调。
+- `/api/v1/auth/oidc/*`：OIDC 登录与回调。
+- `/api/v1/healthz`：健康检查。
 
 其他路径全部交给内嵌前端，用于支持 SPA 刷新和直接打开互助组页面。
 
@@ -142,7 +142,7 @@ $env:BWS_BILIBILI_COOKIE_SECRET = "replace-with-long-random-secret"
 
 ## OAuth 配置
 
-生产环境关闭 mock 登录后，后端通过已配置的 OAuth provider 登录。前端会通过 `GET /api/v1/oauth/providers` 获取可用渠道，并跳转到 `/auth/oauth/<providerId>/login`。
+生产环境关闭 mock 登录后，后端通过已配置的 OAuth provider 登录。前端会通过 `GET /api/v1/oauth/providers` 获取可用渠道，并跳转到 `/api/v1/auth/oauth/<providerId>/login`。
 
 通用配置使用 `BWS_OAUTH_PROVIDERS`，内容是 JSON 数组。字段如下：
 
@@ -158,7 +158,7 @@ QQ 示例：
 ```powershell
 $env:BWS_DEV_AUTH = "0"
 $env:BWS_PUBLIC_BASE = "https://bws.example.com"
-$env:BWS_OAUTH_PROVIDERS = '[{"id":"qq","name":"QQ 登录","type":"qq","authUrl":"https://graph.qq.com/oauth2.0/authorize","tokenUrl":"https://graph.qq.com/oauth2.0/token","userInfoUrl":"https://graph.qq.com/user/get_user_info","clientId":"your-client-id","clientSecret":"your-client-secret","redirectUrl":"https://bws.example.com/auth/oauth/qq/callback"}]'
+$env:BWS_OAUTH_PROVIDERS = '[{"id":"qq","name":"QQ 登录","type":"qq","authUrl":"https://graph.qq.com/oauth2.0/authorize","tokenUrl":"https://graph.qq.com/oauth2.0/token","userInfoUrl":"https://graph.qq.com/user/get_user_info","clientId":"your-client-id","clientSecret":"your-client-secret","redirectUrl":"https://bws.example.com/api/v1/auth/oauth/qq/callback"}]'
 $env:BWS_SESSION_SECRET = "replace-with-random-secret"
 $env:BWS_COOKIE_SECURE = "1"
 $env:BWS_COOKIE_SAMESITE = "lax"
@@ -172,13 +172,14 @@ $env:BWS_PUBLIC_BASE = "https://bws.example.com"
 $env:BWS_OIDC_ISSUER = "https://issuer.example.com"
 $env:BWS_OIDC_CLIENT_ID = "your-client-id"
 $env:BWS_OIDC_CLIENT_SECRET = "your-client-secret"
-$env:BWS_OIDC_REDIRECT_URL = "https://bws.example.com/auth/oidc/callback"
+$env:BWS_OIDC_REDIRECT_URL = "https://bws.example.com/api/v1/auth/oidc/callback"
 $env:BWS_SESSION_SECRET = "replace-with-a-long-random-secret"
 $env:BWS_COOKIE_SECURE = "1"
 $env:BWS_COOKIE_SAMESITE = "lax"
 ```
 
-如果不设置 `BWS_OIDC_REDIRECT_URL`，默认使用 `BWS_PUBLIC_BASE + /auth/oauth/oidc/callback`。如仍直接访问旧路径 `/auth/oidc/login`，旧回调 `/auth/oidc/callback` 也继续可用。
+如果不设置 `BWS_OIDC_REDIRECT_URL`，旧版 OIDC 入口默认使用 `BWS_PUBLIC_BASE + /api/v1/auth/oidc/callback`。
+通过 OAuth provider 列表暴露的 OIDC 渠道默认回调为 `/api/v1/auth/oauth/oidc/callback`。
 
 生产环境关闭 `BWS_DEV_AUTH` 后，服务启动时会校验 OAuth provider 和 `BWS_SESSION_SECRET`。缺少必要配置时后端会直接启动失败，避免以不完整鉴权配置对外提供服务。
 

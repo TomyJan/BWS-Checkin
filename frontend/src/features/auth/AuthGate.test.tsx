@@ -136,7 +136,7 @@ describe("AuthGate", () => {
     );
 
     const qqLogin = await screen.findByRole("link", { name: "QQ 登录" });
-    expect(qqLogin).toHaveAttribute("href", "/auth/oauth/qq/login");
+    expect(qqLogin).toHaveAttribute("href", "/api/v1/auth/oauth/qq/login");
     expect(screen.getByRole("button", { name: "开发登录" })).toBeInTheDocument();
   });
 });

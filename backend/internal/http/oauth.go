@@ -374,7 +374,7 @@ func setOAuthState(w http.ResponseWriter, providerID string, state string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     oauthStateCookiePrefix + providerID,
 		Value:    state,
-		Path:     "/auth/oauth/" + providerID,
+		Path:     "/api/v1/auth/oauth/" + providerID,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -395,7 +395,7 @@ func clearOAuthState(w http.ResponseWriter, providerID string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     oauthStateCookiePrefix + providerID,
 		Value:    "",
-		Path:     "/auth/oauth/" + providerID,
+		Path:     "/api/v1/auth/oauth/" + providerID,
 		MaxAge:   -1,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,

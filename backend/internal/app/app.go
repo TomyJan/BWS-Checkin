@@ -103,7 +103,7 @@ func oidcRedirectURL(cfg config.Config) string {
 	if cfg.OIDCRedirectURL != "" {
 		return cfg.OIDCRedirectURL
 	}
-	return cfg.PublicBase + "/auth/oidc/callback"
+	return cfg.PublicBase + "/api/v1/auth/oidc/callback"
 }
 
 func sameSite(value string) http.SameSite {

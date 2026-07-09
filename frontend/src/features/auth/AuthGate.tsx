@@ -39,7 +39,7 @@ export function AuthGate({ children }: PropsWithChildren) {
       cacheMe(response);
       queryClient.setQueryData(["me"], response);
     } catch {
-      window.location.assign("/auth/oidc/login");
+      window.location.assign("/api/v1/auth/oidc/login");
     }
   }
 
@@ -58,7 +58,7 @@ export function AuthGate({ children }: PropsWithChildren) {
           BWS Checkin
         </Typography>
         {(oauthProviders.data?.providers ?? []).map((provider) => (
-          <Button key={provider.id} variant="contained" href={`/auth/oauth/${provider.id}/login`}>
+          <Button key={provider.id} variant="contained" href={`/api/v1/auth/oauth/${provider.id}/login`}>
             {provider.name}
           </Button>
         ))}
