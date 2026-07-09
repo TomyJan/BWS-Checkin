@@ -13,7 +13,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     queryFn: async () => {
       try {
         const response = await api<MeResponse>("/me");
-        localStorage.setItem(CACHED_ME_KEY, JSON.stringify(response));
+        cacheMe(response);
         return response;
       } catch (error) {
         if (!navigator.onLine) {
@@ -28,12 +28,13 @@ export function AuthGate({ children }: PropsWithChildren) {
   });
 
   async function login() {
-    const response = await fetch("/api/v1/dev/login?name=TomyJan", { method: "POST", credentials: "include" });
-    if (!response.ok) {
+    try {
+      const response = await api<MeResponse>("/dev/login?name=TomyJan", { method: "POST" });
+      cacheMe(response);
+      queryClient.setQueryData(["me"], response);
+    } catch {
       window.location.assign("/auth/oidc/login");
-      return;
     }
-    await queryClient.invalidateQueries({ queryKey: ["me"] });
   }
 
   if (me.isLoading) {
@@ -58,6 +59,10 @@ export function AuthGate({ children }: PropsWithChildren) {
   }
 
   return children;
+}
+
+function cacheMe(me: MeResponse) {
+  localStorage.setItem(CACHED_ME_KEY, JSON.stringify(me));
 }
 
 function cachedMe(): MeResponse | null {
