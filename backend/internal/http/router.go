@@ -1,14 +1,24 @@
 package httpapi
 
 import (
+	"log/slog"
 	"net/http"
+	"time"
 
 	"bws-checkin/backend/internal/frontend"
 	"github.com/go-chi/chi/v5"
 )
 
 func NewRouter(deps Deps) http.Handler {
+	return NewRouterWithLogger(deps, slog.Default())
+}
+
+func NewRouterWithLogger(deps Deps, logger *slog.Logger) http.Handler {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	r := chi.NewRouter()
+	r.Use(requestLogger(logger))
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -38,4 +48,49 @@ func NewRouter(deps Deps) http.Handler {
 	})
 	r.NotFound(frontend.Handler().ServeHTTP)
 	return r
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	if r.status != 0 {
+		return
+	}
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(body []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	n, err := r.ResponseWriter.Write(body)
+	r.bytes += n
+	return n, err
+}
+
+func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			startedAt := time.Now()
+			recorder := &statusRecorder{ResponseWriter: w}
+			next.ServeHTTP(recorder, r)
+			status := recorder.status
+			if status == 0 {
+				status = http.StatusOK
+			}
+			logger.InfoContext(r.Context(), "http_request",
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.Int("status", status),
+				slog.Int("bytes", recorder.bytes),
+				slog.Int64("duration_ms", time.Since(startedAt).Milliseconds()),
+				slog.String("remote_addr", r.RemoteAddr),
+			)
+		})
+	}
 }
