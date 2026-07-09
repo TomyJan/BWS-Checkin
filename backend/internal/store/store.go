@@ -25,8 +25,9 @@ type Store struct {
 }
 
 var (
-	ErrGroupJoinLocked = errors.New("group join locked")
-	ErrGroupArchived   = errors.New("group archived")
+	ErrGroupJoinLocked      = errors.New("group join locked")
+	ErrGroupArchived        = errors.New("group archived")
+	ErrLiveCompletionLocked = errors.New("live completion locked")
 )
 
 type CreateGroupInput struct {
@@ -73,6 +74,16 @@ type SyncTaskCompletionInput struct {
 	UpdatedAt       time.Time
 }
 
+type LiveTaskCompletionInput struct {
+	GroupID       string
+	TaskID        string
+	TargetUserID  string
+	Status        string
+	LiveCheckedAt time.Time
+	UpdatedAt     time.Time
+	LiveStale     bool
+}
+
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return nil, err
@@ -114,7 +125,40 @@ func (s *Store) migrate() error {
 	if _, err := s.db.Exec(string(body)); err != nil {
 		return err
 	}
+	if err := s.ensureColumn("users", "qr_source", "TEXT NOT NULL DEFAULT 'uploaded'"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("tasks", "external_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("tasks", "image_url", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("tasks", "venue_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("tasks", "venue_name", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("tasks", "event_day", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureColumn("tasks", "sync_source", "TEXT NOT NULL DEFAULT 'default'"); err != nil {
+		return err
+	}
 	if err := s.ensureTaskCompletionColumn("completed", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	if err := s.ensureTaskCompletionColumn("status", "TEXT NOT NULL DEFAULT 'manual_completed'"); err != nil {
+		return err
+	}
+	if err := s.ensureTaskCompletionColumn("source", "TEXT NOT NULL DEFAULT 'manual'"); err != nil {
+		return err
+	}
+	if err := s.ensureTaskCompletionColumn("live_checked_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureTaskCompletionColumn("live_stale", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	if err := s.ensureTaskCompletionColumn("updated_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
@@ -124,6 +168,33 @@ func (s *Store) migrate() error {
 		return err
 	}
 	if err := s.ensureColumn("groups", "archived_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS bilibili_accounts (
+			user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+			mid TEXT NOT NULL,
+			uname TEXT NOT NULL,
+			face_url TEXT NOT NULL DEFAULT '',
+			cookie_ciphertext TEXT NOT NULL,
+			cookie_expires_at TEXT NOT NULL DEFAULT '',
+			refresh_token_ciphertext TEXT NOT NULL DEFAULT '',
+			last_validated_at TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS task_sync_state (
+			id TEXT PRIMARY KEY,
+			last_success_at TEXT NOT NULL DEFAULT '',
+			last_error_at TEXT NOT NULL DEFAULT '',
+			last_error_code TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`); err != nil {
 		return err
 	}
 	if _, err := s.db.Exec(`
@@ -140,7 +211,18 @@ func (s *Store) migrate() error {
 	`); err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`UPDATE task_completions SET updated_at = completed_at WHERE updated_at = ''`)
+	_, err = s.db.Exec(`
+		UPDATE task_completions
+		SET
+			updated_at = CASE WHEN updated_at = '' THEN completed_at ELSE updated_at END,
+			status = CASE
+				WHEN source = 'live' AND completed = 1 THEN 'live_completed'
+				WHEN source = 'live' AND completed = 0 THEN 'live_incomplete'
+				WHEN completed = 1 THEN 'manual_completed'
+				ELSE 'manual_incomplete'
+			END,
+			source = CASE WHEN status IN ('live_incomplete', 'live_completed') THEN 'live' ELSE source END
+	`)
 	return err
 }
 
@@ -192,7 +274,7 @@ func (s *Store) UpsertUser(ctx context.Context, subject, displayName string) (do
 
 func (s *Store) UserBySubject(ctx context.Context, subject string) (domain.User, error) {
 	return scanUser(s.db.QueryRowContext(ctx, `
-		SELECT id, display_name, avatar_url, qr_image_path
+		SELECT id, display_name, avatar_url, qr_image_path, qr_source
 		FROM users
 		WHERE oidc_subject = ?
 	`, subject))
@@ -200,7 +282,7 @@ func (s *Store) UserBySubject(ctx context.Context, subject string) (domain.User,
 
 func (s *Store) UserByID(ctx context.Context, id string) (domain.User, error) {
 	return scanUser(s.db.QueryRowContext(ctx, `
-		SELECT id, display_name, avatar_url, qr_image_path
+		SELECT id, display_name, avatar_url, qr_image_path, qr_source
 		FROM users
 		WHERE id = ?
 	`, id))
@@ -209,9 +291,21 @@ func (s *Store) UserByID(ctx context.Context, id string) (domain.User, error) {
 func (s *Store) UpdateUserQR(ctx context.Context, userID string, path string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE users
-		SET qr_image_path = ?, updated_at = CURRENT_TIMESTAMP
+		SET qr_image_path = ?, qr_source = 'uploaded', updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, path, userID)
+	return err
+}
+
+func (s *Store) SetUserQRSource(ctx context.Context, userID string, source string) error {
+	if source != domain.QRSourceUploaded && source != domain.QRSourceBilibiliGenerated {
+		return fmt.Errorf("unsupported qr source: %s", source)
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE users
+		SET qr_source = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, source, userID)
 	return err
 }
 
@@ -223,6 +317,67 @@ func (s *Store) UserQRPath(ctx context.Context, userID string) (string, error) {
 		WHERE id = ?
 	`, userID).Scan(&path)
 	return path, err
+}
+
+func (s *Store) SaveBilibiliAccount(ctx context.Context, account domain.BilibiliAccount) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO bilibili_accounts (
+			user_id, mid, uname, face_url, cookie_ciphertext, cookie_expires_at,
+			refresh_token_ciphertext, last_validated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+			mid = excluded.mid,
+			uname = excluded.uname,
+			face_url = excluded.face_url,
+			cookie_ciphertext = excluded.cookie_ciphertext,
+			cookie_expires_at = excluded.cookie_expires_at,
+			refresh_token_ciphertext = excluded.refresh_token_ciphertext,
+			last_validated_at = excluded.last_validated_at,
+			updated_at = CURRENT_TIMESTAMP
+	`, account.UserID, account.MID, account.Uname, account.FaceURL, account.CookieCiphertext, formatOptionalTime(account.CookieExpiresAt), account.RefreshTokenCiphertext, formatOptionalTime(account.LastValidatedAt))
+	return err
+}
+
+func (s *Store) BilibiliAccount(ctx context.Context, userID string) (domain.BilibiliAccount, error) {
+	var account domain.BilibiliAccount
+	var cookieExpiresAt string
+	var lastValidatedAt string
+	var createdAt string
+	var updatedAt string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT user_id, mid, uname, face_url, cookie_ciphertext, cookie_expires_at,
+			refresh_token_ciphertext, last_validated_at, created_at, updated_at
+		FROM bilibili_accounts
+		WHERE user_id = ?
+	`, userID).Scan(
+		&account.UserID,
+		&account.MID,
+		&account.Uname,
+		&account.FaceURL,
+		&account.CookieCiphertext,
+		&cookieExpiresAt,
+		&account.RefreshTokenCiphertext,
+		&lastValidatedAt,
+		&createdAt,
+		&updatedAt,
+	)
+	if err != nil {
+		return domain.BilibiliAccount{}, err
+	}
+	account.CookieExpiresAt = parseOptionalTime(cookieExpiresAt)
+	account.LastValidatedAt = parseOptionalTime(lastValidatedAt)
+	account.CreatedAt = parseOptionalTime(createdAt)
+	account.UpdatedAt = parseOptionalTime(updatedAt)
+	return account, nil
+}
+
+func (s *Store) UnbindBilibiliAccount(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		DELETE FROM bilibili_accounts
+		WHERE user_id = ?
+	`, userID)
+	return err
 }
 
 func (s *Store) CreateGroup(ctx context.Context, input CreateGroupInput) error {
@@ -446,7 +601,14 @@ func (s *Store) GroupTasks(ctx context.Context, groupID string) ([]domain.TaskSt
 	for taskIndex := range tasks {
 		tasks[taskIndex].TotalCount = len(members)
 		for _, member := range members {
-			item := domain.MemberCompletion{Member: member}
+			item := domain.MemberCompletion{
+				Member:     member,
+				Completed:  false,
+				Status:     domain.CompletionStatusManualIncomplete,
+				Source:     domain.CompletionSourceManual,
+				CanToggle:  true,
+				CanRefresh: false,
+			}
 			if completion, ok := completions[completionKey{TaskID: tasks[taskIndex].ID, UserID: member.ID}]; ok {
 				item = completion
 				item.Member = member
@@ -488,42 +650,119 @@ func (s *Store) SyncTaskCompletion(ctx context.Context, input SyncTaskCompletion
 	} else if archived {
 		return ErrGroupArchived
 	}
+	if locked, err := s.completionLiveLocked(ctx, input.GroupID, input.TaskID, input.TargetUserID); err != nil {
+		return err
+	} else if locked {
+		return ErrLiveCompletionLocked
+	}
 	updatedAt := input.UpdatedAt.UTC()
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
 	}
 	timeValue := updatedAt.Format(time.RFC3339Nano)
 	completed := 0
+	status := domain.CompletionStatusManualIncomplete
 	if input.Completed {
 		completed = 1
+		status = domain.CompletionStatusManualCompleted
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO task_completions (
-			group_id, task_id, target_user_id, checked_by_user_id, completed, completed_at, updated_at
+			group_id, task_id, target_user_id, checked_by_user_id, completed, status, source,
+			completed_at, live_checked_at, live_stale, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, 'manual', ?, '', 0, ?)
 		ON CONFLICT(group_id, task_id, target_user_id) DO UPDATE SET
 			checked_by_user_id = excluded.checked_by_user_id,
 			completed = excluded.completed,
+			status = excluded.status,
+			source = excluded.source,
 			completed_at = excluded.completed_at,
+			live_checked_at = excluded.live_checked_at,
+			live_stale = excluded.live_stale,
 			updated_at = excluded.updated_at
 		WHERE excluded.updated_at >= task_completions.updated_at
-	`, input.GroupID, input.TaskID, input.TargetUserID, input.CheckedByUserID, completed, timeValue, timeValue)
+	`, input.GroupID, input.TaskID, input.TargetUserID, input.CheckedByUserID, completed, status, timeValue, timeValue)
 	return err
+}
+
+func (s *Store) UpsertLiveTaskCompletion(ctx context.Context, input LiveTaskCompletionInput) error {
+	if _, archived, err := s.groupFlags(ctx, input.GroupID); err != nil {
+		return err
+	} else if archived {
+		return ErrGroupArchived
+	}
+	updatedAt := input.UpdatedAt.UTC()
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	liveCheckedAt := input.LiveCheckedAt.UTC()
+	if liveCheckedAt.IsZero() {
+		liveCheckedAt = updatedAt
+	}
+	status := input.Status
+	if status == "" {
+		status = domain.CompletionStatusLiveIncomplete
+	}
+	if status != domain.CompletionStatusLiveIncomplete && status != domain.CompletionStatusLiveCompleted {
+		return fmt.Errorf("unsupported live completion status: %s", status)
+	}
+	completed := 0
+	if status == domain.CompletionStatusLiveCompleted {
+		completed = 1
+	}
+	liveStale := 0
+	if input.LiveStale {
+		liveStale = 1
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO task_completions (
+			group_id, task_id, target_user_id, checked_by_user_id, completed, status, source,
+			completed_at, live_checked_at, live_stale, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, 'live', ?, ?, ?, ?)
+		ON CONFLICT(group_id, task_id, target_user_id) DO UPDATE SET
+			checked_by_user_id = excluded.checked_by_user_id,
+			completed = excluded.completed,
+			status = excluded.status,
+			source = excluded.source,
+			completed_at = excluded.completed_at,
+			live_checked_at = excluded.live_checked_at,
+			live_stale = excluded.live_stale,
+			updated_at = excluded.updated_at
+		WHERE task_completions.source = 'manual' OR excluded.updated_at >= task_completions.updated_at
+	`, input.GroupID, input.TaskID, input.TargetUserID, input.TargetUserID, completed, status, updatedAt.Format(time.RFC3339Nano), liveCheckedAt.Format(time.RFC3339Nano), liveStale, updatedAt.Format(time.RFC3339Nano))
+	return err
+}
+
+func (s *Store) completionLiveLocked(ctx context.Context, groupID string, taskID string, targetUserID string) (bool, error) {
+	var source string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT source
+		FROM task_completions
+		WHERE group_id = ? AND task_id = ? AND target_user_id = ?
+	`, groupID, taskID, targetUserID).Scan(&source)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return source == domain.CompletionSourceLive, nil
 }
 
 func scanUser(row *sql.Row) (domain.User, error) {
 	var user domain.User
 	var qrPath string
-	if err := row.Scan(&user.ID, &user.DisplayName, &user.AvatarURL, &qrPath); err != nil {
+	if err := row.Scan(&user.ID, &user.DisplayName, &user.AvatarURL, &qrPath, &user.QRSource); err != nil {
 		return domain.User{}, err
 	}
-	user.QRImageURL = qrAPIURL(user.ID, qrPath)
+	user.QRImageURL = qrAPIURL(user.ID, qrPath, user.QRSource)
 	return user, nil
 }
 
-func qrAPIURL(userID string, qrPath string) string {
-	if qrPath == "" {
+func qrAPIURL(userID string, qrPath string, qrSource string) string {
+	if qrPath == "" && qrSource != domain.QRSourceBilibiliGenerated {
 		return ""
 	}
 	return "/api/v1/user/qr?userId=" + userID
@@ -545,7 +784,7 @@ func (s *Store) groupFlags(ctx context.Context, groupID string) (bool, bool, err
 
 func (s *Store) groupMembers(ctx context.Context, groupID string) ([]domain.Member, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT u.id, u.display_name, u.qr_image_path
+		SELECT u.id, u.display_name, u.qr_image_path, u.qr_source
 		FROM users u
 		JOIN group_members gm ON gm.user_id = u.id
 		WHERE gm.group_id = ?
@@ -560,10 +799,11 @@ func (s *Store) groupMembers(ctx context.Context, groupID string) ([]domain.Memb
 	for rows.Next() {
 		var member domain.Member
 		var qrPath string
-		if err := rows.Scan(&member.ID, &member.DisplayName, &qrPath); err != nil {
+		var qrSource string
+		if err := rows.Scan(&member.ID, &member.DisplayName, &qrPath, &qrSource); err != nil {
 			return nil, err
 		}
-		member.QRImageURL = qrAPIURL(member.ID, qrPath)
+		member.QRImageURL = qrAPIURL(member.ID, qrPath, qrSource)
 		members = append(members, member)
 	}
 	return members, rows.Err()
@@ -571,7 +811,8 @@ func (s *Store) groupMembers(ctx context.Context, groupID string) ([]domain.Memb
 
 func (s *Store) enabledTasks(ctx context.Context) ([]domain.TaskStatus, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, group_name, name, title, reward_coins, description, sort_order
+		SELECT id, external_id, group_name, name, title, reward_coins, description,
+			image_url, venue_id, venue_name, event_day, sync_source, sort_order
 		FROM tasks
 		WHERE enabled = 1
 		ORDER BY sort_order ASC, id ASC
@@ -584,7 +825,21 @@ func (s *Store) enabledTasks(ctx context.Context) ([]domain.TaskStatus, error) {
 	var tasks []domain.TaskStatus
 	for rows.Next() {
 		var task domain.TaskStatus
-		if err := rows.Scan(&task.ID, &task.GroupName, &task.Name, &task.Title, &task.RewardCoins, &task.Description, &task.SortOrder); err != nil {
+		if err := rows.Scan(
+			&task.ID,
+			&task.ExternalID,
+			&task.GroupName,
+			&task.Name,
+			&task.Title,
+			&task.RewardCoins,
+			&task.Description,
+			&task.ImageURL,
+			&task.VenueID,
+			&task.VenueName,
+			&task.EventDay,
+			&task.SyncSource,
+			&task.SortOrder,
+		); err != nil {
 			return nil, err
 		}
 		tasks = append(tasks, task)
@@ -599,7 +854,9 @@ type completionKey struct {
 
 func (s *Store) completions(ctx context.Context, groupID string) (map[completionKey]domain.MemberCompletion, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tc.task_id, tc.target_user_id, tc.checked_by_user_id, u.display_name, tc.completed, tc.completed_at, tc.updated_at
+		SELECT tc.task_id, tc.target_user_id, tc.checked_by_user_id, u.display_name,
+			tc.completed, tc.status, tc.source, tc.completed_at, tc.live_checked_at,
+			tc.live_stale, tc.updated_at
 		FROM task_completions tc
 		JOIN users u ON u.id = tc.checked_by_user_id
 		WHERE tc.group_id = ?
@@ -616,21 +873,51 @@ func (s *Store) completions(ctx context.Context, groupID string) (map[completion
 		var checkedByID string
 		var checkedByName string
 		var completed int
+		var status string
+		var source string
 		var completedAtRaw string
+		var liveCheckedAtRaw string
+		var liveStale int
 		var updatedAtRaw string
-		if err := rows.Scan(&taskID, &targetUserID, &checkedByID, &checkedByName, &completed, &completedAtRaw, &updatedAtRaw); err != nil {
+		if err := rows.Scan(&taskID, &targetUserID, &checkedByID, &checkedByName, &completed, &status, &source, &completedAtRaw, &liveCheckedAtRaw, &liveStale, &updatedAtRaw); err != nil {
 			return nil, err
 		}
+		if status == "" {
+			status = completionStatusFromCompleted(source, completed == 1)
+		}
+		if source == "" {
+			source = domain.CompletionSourceManual
+		}
 		completedAt := parseSQLiteTime(completedAtRaw)
+		canToggle := source != domain.CompletionSourceLive
 		result[completionKey{TaskID: taskID, UserID: targetUserID}] = domain.MemberCompletion{
 			Completed:     completed == 1,
+			Status:        status,
+			Source:        source,
+			LiveStale:     liveStale == 1,
 			CompletedAt:   completedAt,
+			LiveCheckedAt: parseOptionalTime(liveCheckedAtRaw),
 			UpdatedAt:     parseSQLiteTime(updatedAtRaw),
 			CheckedByID:   &checkedByID,
 			CheckedByName: checkedByName,
+			CanToggle:     canToggle,
+			CanRefresh:    source == domain.CompletionSourceLive,
 		}
 	}
 	return result, rows.Err()
+}
+
+func completionStatusFromCompleted(source string, completed bool) string {
+	if source == domain.CompletionSourceLive {
+		if completed {
+			return domain.CompletionStatusLiveCompleted
+		}
+		return domain.CompletionStatusLiveIncomplete
+	}
+	if completed {
+		return domain.CompletionStatusManualCompleted
+	}
+	return domain.CompletionStatusManualIncomplete
 }
 
 func parseSQLiteTime(value string) *time.Time {
@@ -648,6 +935,13 @@ func parseOptionalTime(value string) *time.Time {
 		return nil
 	}
 	return parseSQLiteTime(value)
+}
+
+func formatOptionalTime(value *time.Time) string {
+	if value == nil || value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func newUUID() string {

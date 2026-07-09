@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
 	"regexp"
 	"testing"
@@ -146,6 +147,117 @@ func TestSyncTaskCompletionKeepsNewestState(t *testing.T) {
 	}
 	if tasks[0].CompletedCount != 0 {
 		t.Fatalf("completed count = %d, want 0", tasks[0].CompletedCount)
+	}
+}
+
+func TestBilibiliAccountAndQRSource(t *testing.T) {
+	s := newTestStore(t)
+	user := mustCreateUser(t, s, "oidc-bilibili", "Bilibili User")
+	expiresAt := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	validatedAt := expiresAt.Add(-time.Hour)
+
+	account := domain.BilibiliAccount{
+		UserID:                 user.ID,
+		MID:                    "123456",
+		Uname:                  "bws-user",
+		FaceURL:                "https://example.com/face.png",
+		CookieCiphertext:       "cookie-ciphertext",
+		CookieExpiresAt:        &expiresAt,
+		RefreshTokenCiphertext: "refresh-token-ciphertext",
+		LastValidatedAt:        &validatedAt,
+	}
+	if err := s.SaveBilibiliAccount(t.Context(), account); err != nil {
+		t.Fatalf("save bilibili account: %v", err)
+	}
+
+	loaded, err := s.BilibiliAccount(t.Context(), user.ID)
+	if err != nil {
+		t.Fatalf("load bilibili account: %v", err)
+	}
+	if loaded.MID != "123456" || loaded.Uname != "bws-user" || loaded.FaceURL != "https://example.com/face.png" {
+		t.Fatalf("loaded account = %+v", loaded)
+	}
+	if loaded.CookieCiphertext != "cookie-ciphertext" || loaded.RefreshTokenCiphertext != "refresh-token-ciphertext" {
+		t.Fatalf("loaded account secret fields not preserved: %+v", loaded)
+	}
+	if loaded.CookieExpiresAt == nil || !loaded.CookieExpiresAt.Equal(expiresAt) {
+		t.Fatalf("cookie expires at = %v, want %v", loaded.CookieExpiresAt, expiresAt)
+	}
+	if loaded.LastValidatedAt == nil || !loaded.LastValidatedAt.Equal(validatedAt) {
+		t.Fatalf("last validated at = %v, want %v", loaded.LastValidatedAt, validatedAt)
+	}
+
+	if err := s.SetUserQRSource(t.Context(), user.ID, domain.QRSourceBilibiliGenerated); err != nil {
+		t.Fatalf("set qr source: %v", err)
+	}
+	updated, err := s.UserByID(t.Context(), user.ID)
+	if err != nil {
+		t.Fatalf("load user after qr source update: %v", err)
+	}
+	if updated.QRSource != domain.QRSourceBilibiliGenerated {
+		t.Fatalf("qr source = %q, want %q", updated.QRSource, domain.QRSourceBilibiliGenerated)
+	}
+
+	if err := s.UnbindBilibiliAccount(t.Context(), user.ID); err != nil {
+		t.Fatalf("unbind bilibili account: %v", err)
+	}
+	if _, err := s.BilibiliAccount(t.Context(), user.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("load unbound bilibili account err = %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestLiveCompletionLocksManualSync(t *testing.T) {
+	s := newTestStore(t)
+	owner := mustCreateUser(t, s, "oidc-live-owner", "Owner")
+	member := mustCreateUser(t, s, "oidc-live-member", "Member")
+	mustCreateGroup(t, s, "bw2026-live", owner.ID)
+	if err := s.JoinGroup(t.Context(), "bw2026-live", member.ID); err != nil {
+		t.Fatalf("join group: %v", err)
+	}
+
+	liveCheckedAt := time.Date(2026, 7, 10, 13, 0, 0, 0, time.UTC)
+	if err := s.UpsertLiveTaskCompletion(t.Context(), LiveTaskCompletionInput{
+		GroupID:       "bw2026-live",
+		TaskID:        "rainbow-station",
+		TargetUserID:  member.ID,
+		Status:        domain.CompletionStatusLiveCompleted,
+		LiveCheckedAt: liveCheckedAt,
+		UpdatedAt:     liveCheckedAt,
+	}); err != nil {
+		t.Fatalf("upsert live completion: %v", err)
+	}
+
+	err := s.SyncTaskCompletion(t.Context(), SyncTaskCompletionInput{
+		GroupID:         "bw2026-live",
+		TaskID:          "rainbow-station",
+		TargetUserID:    member.ID,
+		CheckedByUserID: owner.ID,
+		Completed:       false,
+		UpdatedAt:       liveCheckedAt.Add(time.Minute),
+	})
+	if !errors.Is(err, ErrLiveCompletionLocked) {
+		t.Fatalf("manual sync after live err = %v, want ErrLiveCompletionLocked", err)
+	}
+
+	tasks, err := s.GroupTasks(t.Context(), "bw2026-live")
+	if err != nil {
+		t.Fatalf("group tasks: %v", err)
+	}
+	entry := memberCompletion(t, tasks[0], member.ID)
+	if !entry.Completed {
+		t.Fatal("live completed state was changed by manual sync")
+	}
+	if entry.Status != domain.CompletionStatusLiveCompleted || entry.Source != domain.CompletionSourceLive {
+		t.Fatalf("completion status/source = %q/%q, want live completed/live", entry.Status, entry.Source)
+	}
+	if entry.CanToggle {
+		t.Fatal("live completion can toggle, want false")
+	}
+	if !entry.CanRefresh {
+		t.Fatal("live completion can refresh = false, want true")
+	}
+	if entry.LiveCheckedAt == nil || !entry.LiveCheckedAt.Equal(liveCheckedAt) {
+		t.Fatalf("live checked at = %v, want %v", entry.LiveCheckedAt, liveCheckedAt)
 	}
 }
 
