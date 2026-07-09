@@ -441,6 +441,51 @@ func TestTaskSyncAPI(t *testing.T) {
 	}
 }
 
+func TestTaskImageProxyRequiresLoginAndUsesTaskImageURL(t *testing.T) {
+	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Referer") == "" {
+			t.Fatal("expected referer header for upstream task image request")
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(validPNG(t))
+	}))
+	t.Cleanup(imageServer.Close)
+
+	s := newTestStore(t)
+	if err := s.ReplaceBilibiliTasks(t.Context(), []store.SyncedTaskInput{{
+		ID: "bilibili:4002:20260710:1", ExternalID: "4002", GroupName: "8.1馆",
+		Name: "官方图片任务", Title: "官方图片任务", ImageURL: imageServer.URL + "/logo.png",
+		VenueID: "1", VenueName: "8.1馆", EventDay: "20260710", SortOrder: 10,
+	}}); err != nil {
+		t.Fatalf("replace tasks: %v", err)
+	}
+	h := NewRouter(Deps{Store: s, DevAuth: true})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/task/image?taskId=bilibili:4002:20260710:1", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("image status = %d, want 401", w.Code)
+	}
+
+	cookies := loginForTest(t, h, "TomyJan")
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/task/image?taskId=bilibili:4002:20260710:1", nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("image status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "image/png") {
+		t.Fatalf("content type = %q, want image/png", ct)
+	}
+	if !bytes.HasPrefix(w.Body.Bytes(), []byte{0x89, 'P', 'N', 'G'}) {
+		t.Fatalf("proxied image has invalid png header: %x", w.Body.Bytes()[:4])
+	}
+}
+
 func TestGroupTaskSyncRequiresOwnerBilibiliAccount(t *testing.T) {
 	s := newTestStore(t)
 	syncer := tasksync.New(s, &httpTaskSource{tasks: []tasksync.Task{{

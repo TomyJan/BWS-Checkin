@@ -10,6 +10,7 @@ import (
 	_ "image/png"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -714,6 +715,54 @@ func (h Handler) syncTasks(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, map[string]store.TaskSyncState{"sync": state})
 }
 
+func (h Handler) taskImage(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.currentUser(w, r); !ok {
+		return
+	}
+	taskID := r.URL.Query().Get("taskId")
+	if taskID == "" {
+		writeBusinessError(w, "task_id_required", "")
+		return
+	}
+	task, err := h.deps.Store.TaskByID(r.Context(), taskID)
+	if err != nil || task.ImageURL == "" {
+		writeBusinessError(w, "task_image_not_found", "")
+		return
+	}
+	upstreamURL, err := url.Parse(task.ImageURL)
+	if err != nil || (upstreamURL.Scheme != "http" && upstreamURL.Scheme != "https") {
+		writeBusinessError(w, "task_image_not_found", "")
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, upstreamURL.String(), nil)
+	if err != nil {
+		writeBusinessError(w, "task_image_load_failed", err.Error())
+		return
+	}
+	req.Header.Set("Accept", "image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8")
+	req.Header.Set("Referer", "https://www.bilibili.com/blackboard/era/bws2026-live.html#/map")
+	req.Header.Set("User-Agent", "BWS-Checkin/1.0")
+	resp, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
+	if err != nil {
+		writeBusinessError(w, "task_image_load_failed", err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		writeBusinessError(w, "task_image_load_failed", "")
+		return
+	}
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		writeBusinessError(w, "task_image_invalid", "")
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, io.LimitReader(resp.Body, 4<<20))
+}
+
 func (h Handler) completeTask(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.currentUser(w, r)
 	if !ok {
@@ -967,6 +1016,10 @@ func businessErrorMessage(code string, fallback string) string {
 		"qr_not_found":                      "二维码图片不存在",
 		"qr_save_failed":                    "保存二维码失败，请稍后重试",
 		"qr_update_failed":                  "更新二维码失败，请稍后重试",
+		"task_id_required":                  "缺少任务 ID",
+		"task_image_invalid":                "点位图片无法识别",
+		"task_image_load_failed":            "点位图片加载失败",
+		"task_image_not_found":              "点位图片不存在",
 		"unsupported_image_type":            "只支持 PNG、JPG、JPEG 或 WebP 图片",
 		"user_id_required":                  "缺少用户 ID",
 	}
