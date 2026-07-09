@@ -78,3 +78,10 @@ export function setQRSource(source: "uploaded" | "bilibili_generated") {
     body: JSON.stringify({ source })
   });
 }
+
+export function refreshTaskStatus(input: { groupId: string; taskId: string; userId: string }) {
+  return api("/task/status/refresh", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}

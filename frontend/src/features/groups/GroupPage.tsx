@@ -23,7 +23,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../../api/client";
+import { api, refreshTaskStatus } from "../../api/client";
 import { qrImageURL } from "../../api/qr";
 import type { GroupResponse, MeResponse, MemberCompletion, TasksResponse, TaskStatus, User } from "../../api/types";
 import {
@@ -155,6 +155,16 @@ export function GroupPage() {
     }
   });
 
+  const refreshStatus = useMutation({
+    mutationFn: (entry: MemberCompletion) => {
+      if (!currentTask) throw new Error("当前点位不存在");
+      return refreshTaskStatus({ groupId, taskId: currentTask.id, userId: entry.member.id });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["groupTasks", groupId] });
+    }
+  });
+
   const removeMember = useMutation({
     mutationFn: async (userId: string) => {
       await api<{ ok: boolean }>("/group/member/remove", {
@@ -220,7 +230,7 @@ export function GroupPage() {
   }
 
   function toggleCompletion(entry: MemberCompletion) {
-    if (!currentTask || isArchived) return;
+    if (!currentTask || isArchived || !canToggleCompletion(entry)) return;
     complete.mutate({
       groupId,
       taskId: currentTask.id,
@@ -342,6 +352,9 @@ export function GroupPage() {
     return `${time} ${currentMember.checkedByName}`;
   }, [currentMember]);
 
+  const currentMemberLive = currentMember ? isLiveCompletion(currentMember) : false;
+  const currentMemberCanRefresh = currentMember ? canRefreshCompletion(currentMember) : false;
+
   if (loading) {
     return (
       <Stack sx={{ minHeight: "100vh", alignItems: "center", justifyContent: "center" }}>
@@ -445,7 +458,7 @@ export function GroupPage() {
                 }}
               >
                 <span>{entry.member.displayName}</span>
-                <small>{entry.completed ? `${formatTime(entry.completedAt)} ${entry.checkedByName}` : entry.member.qrImageUrl ? "未完成" : "缺二维码"}</small>
+                <small>{completionMeta(entry)}</small>
                 {canRemove(entry) && (
                   <IconButton
                     className="member-remove"
@@ -464,19 +477,31 @@ export function GroupPage() {
             ))}
           </Box>
           <Stack direction="row" sx={{ gap: 1 }}>
-            <Button
-              fullWidth
-              variant="contained"
-              startIcon={<CheckIcon />}
-              disabled={!currentMember || complete.isPending || isArchived}
-              onClick={() => currentMember && toggleCompletion(currentMember)}
-            >
-              {isArchived
-                ? "已归档"
-                : currentMember?.completed
-                  ? `撤销完成 · ${completedLabel}`
-                  : `标记 ${currentMember?.member.displayName ?? ""} 完成`}
-            </Button>
+            {currentMemberLive ? (
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<CheckIcon />}
+                disabled={!currentMember || refreshStatus.isPending || isArchived || !isOnline || offlineSnapshot || !currentMemberCanRefresh}
+                onClick={() => currentMember && refreshStatus.mutate(currentMember)}
+              >
+                刷新状态
+              </Button>
+            ) : (
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={<CheckIcon />}
+                disabled={!currentMember || complete.isPending || isArchived || !canToggleCompletion(currentMember)}
+                onClick={() => currentMember && toggleCompletion(currentMember)}
+              >
+                {isArchived
+                  ? "已归档"
+                  : currentMember?.completed
+                    ? `撤销完成 · ${completedLabel}`
+                    : `标记 ${currentMember?.member.displayName ?? ""} 完成`}
+              </Button>
+            )}
           </Stack>
         </Box>
       </Box>
@@ -641,6 +666,29 @@ function formatTime(value: string | null) {
 
 function currentUser(user?: User): User {
   return user ?? { id: "", displayName: "本机", avatarUrl: "", qrImageUrl: "", qrSource: "uploaded" };
+}
+
+function isLiveCompletion(entry: MemberCompletion) {
+  return entry.source === "live" || entry.status?.startsWith("live_") === true;
+}
+
+function canToggleCompletion(entry: MemberCompletion) {
+  return entry.canToggle ?? !isLiveCompletion(entry);
+}
+
+function canRefreshCompletion(entry: MemberCompletion) {
+  return entry.canRefresh ?? isLiveCompletion(entry);
+}
+
+function completionMeta(entry: MemberCompletion) {
+  if (!entry.member.qrImageUrl) return "缺二维码";
+  if (isLiveCompletion(entry)) {
+    const checkedAt = formatTime(entry.liveCheckedAt ?? entry.updatedAt);
+    const stale = entry.liveStale ? "，待刷新" : "";
+    return checkedAt ? `接口更新 ${checkedAt}${stale}` : `接口${entry.completed ? "已完成" : "未完成"}${stale}`;
+  }
+  if (entry.completed) return `${formatTime(entry.completedAt)} ${entry.checkedByName}`;
+  return "未完成";
 }
 
 function taskMetaLabel(task: TaskStatus) {

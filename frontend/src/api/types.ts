@@ -60,6 +60,9 @@ export interface Member {
   qrImageUrl: string;
 }
 
+export type CompletionStatus = "manual_incomplete" | "manual_completed" | "live_incomplete" | "live_completed";
+export type CompletionSource = "manual" | "live";
+
 export interface MemberCompletion {
   member: Member;
   completed: boolean;
@@ -67,6 +70,12 @@ export interface MemberCompletion {
   updatedAt: string | null;
   checkedById: string | null;
   checkedByName: string;
+  status?: CompletionStatus;
+  source?: CompletionSource;
+  liveStale?: boolean;
+  liveCheckedAt?: string | null;
+  canToggle?: boolean;
+  canRefresh?: boolean;
 }
 
 export interface TaskStatus {

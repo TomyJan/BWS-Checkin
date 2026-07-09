@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { GroupPage } from "./GroupPage";
@@ -13,7 +13,7 @@ function renderGroupPage() {
     }
   });
   client.setQueryData(["me"], {
-    user: { id: "owner", displayName: "Owner", avatarUrl: "", qrImageUrl: "" }
+    user: { id: "owner", displayName: "Owner", avatarUrl: "", qrImageUrl: "", qrSource: "uploaded" }
   });
   return render(
     <QueryClientProvider client={client}>
@@ -27,8 +27,13 @@ function renderGroupPage() {
 }
 
 describe("GroupPage", () => {
+  let liveMode = false;
+  let refreshCalls = 0;
+
   beforeEach(() => {
     vi.restoreAllMocks();
+    liveMode = false;
+    refreshCalls = 0;
     Object.defineProperty(window.navigator, "onLine", {
       configurable: true,
       value: true
@@ -56,6 +61,33 @@ describe("GroupPage", () => {
         );
       }
       if (url.includes("/api/v1/group/tasks")) {
+        const memberStatus = liveMode
+          ? {
+              completed: true,
+              completedAt: "2026-07-10T10:00:00Z",
+              updatedAt: "2026-07-10T10:00:00Z",
+              checkedById: "",
+              checkedByName: "",
+              status: "live_completed",
+              source: "live",
+              liveStale: false,
+              liveCheckedAt: "2026-07-10T10:00:00Z",
+              canToggle: false,
+              canRefresh: true
+            }
+          : {
+              completed: false,
+              completedAt: null,
+              updatedAt: null,
+              checkedById: null,
+              checkedByName: "",
+              status: "manual_incomplete",
+              source: "manual",
+              liveStale: false,
+              liveCheckedAt: null,
+              canToggle: true,
+              canRefresh: false
+            };
         return Promise.resolve(
           Response.json({
             ok: true,
@@ -74,11 +106,7 @@ describe("GroupPage", () => {
                   members: [
                     {
                       member: { id: "u1", displayName: "Alice", qrImageUrl: "/uploads/u1.png" },
-                      completed: false,
-                      completedAt: null,
-                      updatedAt: null,
-                      checkedById: null,
-                      checkedByName: ""
+                      ...memberStatus
                     }
                   ]
                 },
@@ -99,7 +127,13 @@ describe("GroupPage", () => {
                       completedAt: null,
                       updatedAt: null,
                       checkedById: null,
-                      checkedByName: ""
+                      checkedByName: "",
+                      status: "manual_incomplete",
+                      source: "manual",
+                      liveStale: false,
+                      liveCheckedAt: null,
+                      canToggle: true,
+                      canRefresh: false
                     }
                   ]
                 }
@@ -108,11 +142,16 @@ describe("GroupPage", () => {
           })
         );
       }
+      if (url.includes("/api/v1/task/status/refresh")) {
+        refreshCalls += 1;
+        return Promise.resolve(Response.json({ ok: true, data: {} }));
+      }
       return Promise.resolve(Response.json({ ok: true, data: {} }));
     });
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
   });
 
@@ -144,5 +183,26 @@ describe("GroupPage", () => {
     expect(screen.getByText("乐园币 x5")).toBeInTheDocument();
     expect(screen.queryByText("完成彩虹补给站互动")).not.toBeInTheDocument();
     expect(screen.getByText("BW2026 周五")).toBeInTheDocument();
+  });
+
+  test("shows refresh action for Live status and disables it offline", async () => {
+    liveMode = true;
+    renderGroupPage();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "刷新状态" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /撤销完成/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新状态" }));
+    await waitFor(() => expect(refreshCalls).toBe(1));
+    expect(screen.getByText(/接口更新/)).toBeInTheDocument();
+
+    cleanup();
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      value: false
+    });
+    renderGroupPage();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "刷新状态" })).toBeDisabled());
   });
 });
