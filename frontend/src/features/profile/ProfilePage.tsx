@@ -24,6 +24,7 @@ import { qrImageURL } from "../../api/qr";
 import type { BilibiliLoginPollResponse, BilibiliLoginQRCodeResponse } from "../../api/types";
 import { CloudUploadIcon, DeleteIcon, SyncIcon } from "../../icons";
 import { UserLayout } from "../../layouts/UserLayout";
+import { qrCodeDataURL } from "../../utils/qrCode";
 
 const sourceLabel = {
   uploaded: "上传图片",
@@ -137,7 +138,7 @@ export function ProfilePage() {
   const hasCurrentQR = Boolean(user?.qrImageUrl);
   const hasUploadedQR = currentSource === "uploaded" && hasCurrentQR;
   const qrSrc = hasCurrentQR ? qrImageURL(user) : "";
-  const loginQRImage = loginQR?.imageDataUrl ?? "";
+  const loginQRImage = loginQR?.imageDataUrl || (loginQR?.url ? qrCodeDataURL(loginQR.url) : "");
   const loginQRMissingImage = Boolean(loginQR && !loginQRImage);
   const isPollingLogin = Boolean(loginQR && loginStatus !== "confirmed" && loginStatus !== "expired" && loginStatus !== "failed");
   const uploadButtonLabel = hasUploadedQR ? "更新上传二维码" : "上传 BWS 二维码";
@@ -373,8 +374,7 @@ export function ProfilePage() {
                     width: "min(100%, 620px)",
                     maxHeight: { xs: 440, md: 620 },
                     objectFit: "contain",
-                    borderRadius: "12px",
-                    bgcolor: "#fff"
+                    borderRadius: "12px"
                   }}
                 />
               ) : (

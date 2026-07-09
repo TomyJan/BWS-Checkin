@@ -111,7 +111,9 @@ describe("ProfilePage", () => {
     expect(getComputedStyle(currentQRSurface).borderRadius).toBe("18px");
     expect(screen.queryByTestId("current-qr-device")).not.toBeInTheDocument();
     expect(screen.queryByText(/a4fc8cfb-7dc8-485e-a270-76d18a44cdc7/)).not.toBeInTheDocument();
-    expect(await screen.findByRole("img", { name: "我的二维码" })).toBeInTheDocument();
+    const currentQRImage = await screen.findByRole("img", { name: "我的二维码" });
+    expect(currentQRImage).toBeInTheDocument();
+    expect(getComputedStyle(currentQRImage).backgroundColor).toBe("rgba(0, 0, 0, 0)");
     expect(screen.getByRole("button", { name: "更新上传二维码" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "替换当前图片" })).not.toBeInTheDocument();
     expect(screen.getByText("尚未生成登录二维码")).toBeInTheDocument();
@@ -150,14 +152,15 @@ describe("ProfilePage", () => {
     expect(screen.getByRole("img", { name: "我的二维码" })).toHaveAttribute("src", "/api/v1/user/qr?userId=a4fc8cfb-7dc8-485e-a270-76d18a44cdc7");
   });
 
-  test("does not render the Bilibili login URL as an image when image data is missing", async () => {
+  test("generates a renderable Bilibili login QR image when server image data is missing", async () => {
     loginQRCodeImageDataUrl = undefined;
     renderProfilePage();
 
     fireEvent.click(await screen.findByRole("button", { name: "生成登录二维码" }));
 
-    await waitFor(() => expect(screen.getByText("接口未返回二维码图片")).toBeInTheDocument());
-    expect(screen.getByText("不是扫码失败，当前页面没有拿到可渲染的二维码图片数据。")).toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: "B 站登录二维码" })).not.toBeInTheDocument();
+    const loginImage = await screen.findByRole("img", { name: "B 站登录二维码" });
+    expect(loginImage).toHaveAttribute("src", expect.stringMatching(/^data:image\//));
+    expect(screen.getByText("等待 B 站客户端扫码")).toBeInTheDocument();
+    expect(screen.queryByText("接口未返回二维码图片")).not.toBeInTheDocument();
   });
 });
