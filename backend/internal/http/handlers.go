@@ -124,6 +124,7 @@ func (h Handler) uploadQR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	files := filestore.Local{Dir: h.deps.UploadDir}
+	oldQRPath, _ := h.deps.Store.UserQRPath(r.Context(), user.ID)
 	url, err := files.SaveQR(user.ID, ext, bytes.NewReader(body))
 	if err != nil {
 		writeBusinessError(w, "qr_save_failed", err.Error())
@@ -133,8 +134,8 @@ func (h Handler) uploadQR(w http.ResponseWriter, r *http.Request) {
 		writeBusinessError(w, "qr_update_failed", err.Error())
 		return
 	}
-	if user.QRImageURL != "" && user.QRImageURL != url {
-		_ = files.DeleteURL(user.QRImageURL)
+	if oldQRPath != "" && oldQRPath != url {
+		_ = files.DeleteURL(oldQRPath)
 	}
 	h.audit(r, user.ID, "qr.upload", "", user.ID, "")
 	updated, err := h.deps.Store.UserByID(r.Context(), user.ID)
@@ -150,13 +151,31 @@ func (h Handler) deleteQR(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_ = filestore.Local{Dir: h.deps.UploadDir}.DeleteURL(user.QRImageURL)
+	qrPath, _ := h.deps.Store.UserQRPath(r.Context(), user.ID)
+	_ = filestore.Local{Dir: h.deps.UploadDir}.DeleteURL(qrPath)
 	if err := h.deps.Store.UpdateUserQR(r.Context(), user.ID, ""); err != nil {
 		writeBusinessError(w, "qr_delete_failed", err.Error())
 		return
 	}
 	h.audit(r, user.ID, "qr.delete", "", user.ID, "")
 	writeOK(w, map[string]bool{"ok": true})
+}
+
+func (h Handler) userQR(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.currentUser(w, r); !ok {
+		return
+	}
+	userID := r.URL.Query().Get("userId")
+	if userID == "" {
+		writeBusinessError(w, "user_id_required", "userId is required")
+		return
+	}
+	qrPath, err := h.deps.Store.UserQRPath(r.Context(), userID)
+	if err != nil || qrPath == "" {
+		writeBusinessError(w, "qr_not_found", "QR image not found")
+		return
+	}
+	http.ServeFile(w, r, filepath.Join(h.deps.UploadDir, filepath.Base(qrPath)))
 }
 
 type createGroupRequest struct {

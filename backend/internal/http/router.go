@@ -21,6 +21,7 @@ func NewRouter(deps Deps) http.Handler {
 		r.Get("/me", h.me)
 		r.Post("/me/qr/upload", h.uploadQR)
 		r.Post("/me/qr/delete", h.deleteQR)
+		r.Get("/user/qr", h.userQR)
 		r.Get("/group/list", h.listGroups)
 		r.Post("/group/create", h.createGroup)
 		r.Post("/group/update", h.updateGroup)
@@ -34,8 +35,5 @@ func NewRouter(deps Deps) http.Handler {
 		r.Post("/task/complete", h.completeTask)
 		r.Post("/task/uncomplete", h.uncompleteTask)
 	})
-	if deps.UploadDir != "" {
-		r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir(deps.UploadDir))))
-	}
 	return r
 }

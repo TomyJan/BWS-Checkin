@@ -215,6 +215,16 @@ func (s *Store) UpdateUserQR(ctx context.Context, userID string, path string) er
 	return err
 }
 
+func (s *Store) UserQRPath(ctx context.Context, userID string) (string, error) {
+	var path string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT qr_image_path
+		FROM users
+		WHERE id = ?
+	`, userID).Scan(&path)
+	return path, err
+}
+
 func (s *Store) CreateGroup(ctx context.Context, input CreateGroupInput) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -504,10 +514,19 @@ func (s *Store) SyncTaskCompletion(ctx context.Context, input SyncTaskCompletion
 
 func scanUser(row *sql.Row) (domain.User, error) {
 	var user domain.User
-	if err := row.Scan(&user.ID, &user.DisplayName, &user.AvatarURL, &user.QRImageURL); err != nil {
+	var qrPath string
+	if err := row.Scan(&user.ID, &user.DisplayName, &user.AvatarURL, &qrPath); err != nil {
 		return domain.User{}, err
 	}
+	user.QRImageURL = qrAPIURL(user.ID, qrPath)
 	return user, nil
+}
+
+func qrAPIURL(userID string, qrPath string) string {
+	if qrPath == "" {
+		return ""
+	}
+	return "/api/v1/user/qr?userId=" + userID
 }
 
 func (s *Store) groupFlags(ctx context.Context, groupID string) (bool, bool, error) {

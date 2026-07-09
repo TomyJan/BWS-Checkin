@@ -556,11 +556,24 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 		t.Fatalf("me status = %d", w.Code)
 	}
 	assertOK(t, w)
-	if !strings.Contains(w.Body.String(), "/uploads/") {
-		t.Fatalf("expected qrImageUrl in response, got %s", w.Body.String())
+	if !strings.Contains(w.Body.String(), "/api/v1/user/qr?userId="+userID) {
+		t.Fatalf("expected QR API URL in response, got %s", w.Body.String())
 	}
 	if _, err := os.Stat(filepath.Join(uploadDir, userID+".png")); err != nil {
 		t.Fatalf("expected uploaded file to exist: %v", err)
+	}
+
+	qrReq := httptest.NewRequest(http.MethodGet, "/api/v1/user/qr?userId="+userID, nil)
+	for _, c := range cookies {
+		qrReq.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, qrReq)
+	if w.Code != http.StatusOK {
+		t.Fatalf("qr status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "image/png") {
+		t.Fatalf("content type = %q, want image/png", ct)
 	}
 
 	req = multipartRequest(t, "/api/v1/me/qr/upload", "qr.jpg", validJPEG(t))
@@ -604,8 +617,20 @@ func TestQRUploadUpdatesCurrentUser(t *testing.T) {
 		t.Fatalf("me status after delete = %d", w.Code)
 	}
 	assertOK(t, w)
-	if strings.Contains(w.Body.String(), "/uploads/") {
+	if strings.Contains(w.Body.String(), "/api/v1/user/qr") {
 		t.Fatalf("expected qrImageUrl to be cleared, got %s", w.Body.String())
+	}
+}
+
+func TestQRImageAPIRequiresLogin(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true, UploadDir: t.TempDir()})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/user/qr?userId=missing", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("qr status = %d, want 401", w.Code)
 	}
 }
 

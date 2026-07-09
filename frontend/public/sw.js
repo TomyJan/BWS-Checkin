@@ -24,12 +24,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname.startsWith("/api/")) return;
-
-  if (url.pathname.startsWith("/uploads/")) {
+  if (url.pathname === "/api/v1/user/qr") {
     event.respondWith(cacheFirst(request, QR_CACHE));
     return;
   }
+
+  if (url.pathname.startsWith("/api/")) return;
 
   event.respondWith(cacheFirst(request, RUNTIME_CACHE));
 });
