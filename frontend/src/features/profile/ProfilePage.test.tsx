@@ -103,7 +103,12 @@ describe("ProfilePage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /TomyJan/ })).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "个人中心" })).toBeInTheDocument();
     expect(screen.getByTestId("profile-workbench")).toBeInTheDocument();
-    expect(screen.getByTestId("current-qr-preview")).toBeInTheDocument();
+    const currentQRPreview = screen.getByTestId("current-qr-preview");
+    expect(currentQRPreview).toBeInTheDocument();
+    expect(getComputedStyle(currentQRPreview).borderRadius).toBe("16px");
+    const currentQRSurface = screen.getByTestId("current-qr-surface");
+    expect(currentQRSurface).toBeInTheDocument();
+    expect(getComputedStyle(currentQRSurface).borderRadius).toBe("18px");
     expect(screen.queryByTestId("current-qr-device")).not.toBeInTheDocument();
     expect(screen.queryByText(/a4fc8cfb-7dc8-485e-a270-76d18a44cdc7/)).not.toBeInTheDocument();
     expect(await screen.findByRole("img", { name: "我的二维码" })).toBeInTheDocument();

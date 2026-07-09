@@ -30,6 +30,10 @@ const sourceLabel = {
   bilibili_generated: "B 站生成"
 } as const;
 
+const panelRadius = "16px";
+const qrSurfaceRadius = "18px";
+const controlSurfaceRadius = "14px";
+
 function loginStatusText(status?: BilibiliLoginPollResponse["status"]) {
   switch (status) {
     case "pending_confirm":
@@ -174,7 +178,7 @@ export function ProfilePage() {
           }}
         >
           <Stack spacing={2}>
-            <Paper variant="outlined" sx={{ borderRadius: 4, p: { xs: 2, sm: 2.5 }, bgcolor: "background.paper" }}>
+            <Paper variant="outlined" sx={{ borderRadius: panelRadius, p: { xs: 2, sm: 2.5 }, bgcolor: "background.paper" }}>
               <Stack spacing={2}>
                 <Stack direction="row" sx={{ alignItems: "flex-start", justifyContent: "space-between", gap: 1.5 }}>
                   <Box>
@@ -193,7 +197,7 @@ export function ProfilePage() {
                 </Stack>
 
                 {isBound && (
-                  <Box sx={{ minWidth: 0, px: 1.5, py: 1.25, borderRadius: 3, bgcolor: "action.hover" }}>
+                  <Box sx={{ minWidth: 0, px: 1.5, py: 1.25, borderRadius: controlSurfaceRadius, bgcolor: "action.hover" }}>
                     <Typography sx={{ fontWeight: 850 }} noWrap>
                       {account?.uname}
                     </Typography>
@@ -210,7 +214,7 @@ export function ProfilePage() {
                     minHeight: loginQRImage ? 252 : 148,
                     border: 1,
                     borderColor: loginQRMissingImage ? "error.main" : "divider",
-                    borderRadius: 3,
+                    borderRadius: panelRadius,
                     bgcolor: "background.default",
                     p: 2
                   }}
@@ -220,7 +224,7 @@ export function ProfilePage() {
                       component="img"
                       src={loginQRImage}
                       alt="B 站登录二维码"
-                      sx={{ width: 220, height: 220, maxWidth: "100%", borderRadius: 2, objectFit: "contain", bgcolor: "#fff", p: 1 }}
+                      sx={{ width: 220, height: 220, maxWidth: "100%", borderRadius: "12px", objectFit: "contain", bgcolor: "#fff", p: 1 }}
                     />
                   ) : (
                     <Stack spacing={0.75} sx={{ alignItems: "center", textAlign: "center", color: "text.secondary" }}>
@@ -247,7 +251,7 @@ export function ProfilePage() {
                 )}
 
                 {loginQRMissingImage && (
-                  <Alert severity="error" variant="outlined" sx={{ borderRadius: 3 }}>
+                  <Alert severity="error" variant="outlined" sx={{ borderRadius: panelRadius }}>
                     不是扫码失败，当前页面没有拿到可渲染的二维码图片数据。
                   </Alert>
                 )}
@@ -265,7 +269,7 @@ export function ProfilePage() {
               </Stack>
             </Paper>
 
-            <Paper variant="outlined" sx={{ borderRadius: 4, p: 2, bgcolor: "background.paper" }}>
+            <Paper variant="outlined" sx={{ borderRadius: panelRadius, p: 2, bgcolor: "background.paper" }}>
               <Stack spacing={1.25}>
                 <Typography color="text.secondary" sx={{ fontSize: 13, fontWeight: 900 }}>
                   二维码来源
@@ -291,7 +295,7 @@ export function ProfilePage() {
               </Stack>
             </Paper>
 
-            <Paper variant="outlined" sx={{ borderRadius: 4, p: 2, bgcolor: "background.paper" }}>
+            <Paper variant="outlined" sx={{ borderRadius: panelRadius, p: 2, bgcolor: "background.paper" }}>
               <Stack spacing={1.5}>
                 <Box>
                   <Typography sx={{ fontWeight: 900 }}>上传二维码</Typography>
@@ -319,11 +323,12 @@ export function ProfilePage() {
             </Paper>
           </Stack>
 
-          <Paper
+          <Box
             data-testid="current-qr-preview"
-            variant="outlined"
             sx={{
-              borderRadius: 4,
+              border: 1,
+              borderColor: "divider",
+              borderRadius: panelRadius,
               p: { xs: 2, sm: 3 },
               bgcolor: "background.paper",
               minHeight: { xs: 520, lg: 680 },
@@ -345,6 +350,7 @@ export function ProfilePage() {
             </Stack>
 
             <Box
+              data-testid="current-qr-surface"
               sx={{
                 display: "grid",
                 placeItems: "center",
@@ -352,7 +358,7 @@ export function ProfilePage() {
                 minHeight: { xs: 380, md: 560 },
                 border: 1,
                 borderColor: "divider",
-                borderRadius: 4,
+                borderRadius: qrSurfaceRadius,
                 bgcolor: "background.default",
                 overflow: "hidden",
                 p: { xs: 2, sm: 3 }
@@ -367,7 +373,7 @@ export function ProfilePage() {
                     width: "min(100%, 620px)",
                     maxHeight: { xs: 440, md: 620 },
                     objectFit: "contain",
-                    borderRadius: 3,
+                    borderRadius: "12px",
                     bgcolor: "#fff"
                   }}
                 />
@@ -382,7 +388,7 @@ export function ProfilePage() {
                 </Stack>
               )}
             </Box>
-          </Paper>
+          </Box>
         </Box>
       </Stack>
     </UserLayout>
