@@ -127,7 +127,7 @@ func (h Handler) oauthProviders(w http.ResponseWriter, r *http.Request) {
 			Type: provider.providerType(),
 		})
 	}
-	writeOK(w, map[string][]domain.OAuthProvider{"providers": providers})
+	writeOK(w, map[string]any{"providers": providers, "devAuth": h.deps.DevAuth})
 }
 
 func (h Handler) oauthAccounts(w http.ResponseWriter, r *http.Request) {

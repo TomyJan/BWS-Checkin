@@ -372,6 +372,31 @@ func TestOAuthProvidersAPIHidesSecrets(t *testing.T) {
 	if strings.Contains(body, "qq-secret") || strings.Contains(body, "clientSecret") {
 		t.Fatalf("providers leaked secret: %s", body)
 	}
+	if !strings.Contains(body, `"devAuth":true`) {
+		t.Fatalf("providers should expose dev auth state, got %s", body)
+	}
+}
+
+func TestOAuthProvidersAPIExposesDisabledDevAuth(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{
+		Store:   s,
+		DevAuth: false,
+		OAuthProviders: []OAuthProviderConfig{{
+			ID:   "qq",
+			Name: "QQ 登录",
+			Type: "qq",
+		}},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/oauth/providers", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	assertOK(t, w)
+	body := w.Body.String()
+	if !strings.Contains(body, `"devAuth":false`) {
+		t.Fatalf("providers should expose disabled dev auth state, got %s", body)
+	}
 }
 
 func TestQQOpenIDURLUsesGraphMeEndpoint(t *testing.T) {

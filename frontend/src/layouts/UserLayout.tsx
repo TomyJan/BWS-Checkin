@@ -9,9 +9,9 @@ import {
   Stack,
   Typography
 } from "@mui/material";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
+import { Link as RouterLink, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import type { MeResponse } from "../api/types";
 
@@ -21,7 +21,6 @@ interface UserLayoutProps {
 }
 
 export function UserLayout({ children, maxWidth = "md" }: UserLayoutProps) {
-  const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -31,8 +30,7 @@ export function UserLayout({ children, maxWidth = "md" }: UserLayoutProps) {
   async function logout() {
     setAnchor(null);
     await api("/logout", { method: "POST" });
-    queryClient.clear();
-    navigate("/");
+    completeLogout(queryClient);
   }
 
   return (
@@ -103,4 +101,10 @@ export function UserLayout({ children, maxWidth = "md" }: UserLayoutProps) {
       </Box>
     </Box>
   );
+}
+
+export function completeLogout(queryClient: QueryClient, location: Pick<Location, "assign"> = window.location) {
+  localStorage.removeItem("bws:me");
+  queryClient.clear();
+  location.assign("/");
 }

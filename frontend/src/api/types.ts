@@ -53,6 +53,7 @@ export interface OAuthAccount {
 
 export interface OAuthProvidersResponse {
   providers: OAuthProvider[] | null;
+  devAuth: boolean;
 }
 
 export interface OAuthAccountsResponse {

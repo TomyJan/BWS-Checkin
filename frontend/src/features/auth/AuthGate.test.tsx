@@ -45,7 +45,7 @@ describe("AuthGate", () => {
         return Promise.resolve(new Response("", { status: 401 }));
       }
       if (url.endsWith("/api/v1/oauth/providers")) {
-        return Promise.resolve(Response.json({ ok: true, data: { providers: [] } }));
+        return Promise.resolve(Response.json({ ok: true, data: { providers: [], devAuth: true } }));
       }
       return Promise.reject(new Error(`unexpected request ${url}`));
     });
@@ -87,7 +87,7 @@ describe("AuthGate", () => {
         return Promise.resolve(new Response("", { status: 401 }));
       }
       if (url.endsWith("/api/v1/oauth/providers")) {
-        return Promise.resolve(Response.json({ ok: true, data: { providers: [] } }));
+        return Promise.resolve(Response.json({ ok: true, data: { providers: [], devAuth: true } }));
       }
       if (url.endsWith("/api/v1/dev/login?name=TomyJan")) {
         return Promise.resolve(
@@ -122,7 +122,7 @@ describe("AuthGate", () => {
         return Promise.resolve(
           Response.json({
             ok: true,
-            data: { providers: [{ id: "qq", name: "QQ 登录", type: "qq" }] }
+            data: { providers: [{ id: "qq", name: "QQ 登录", type: "qq" }], devAuth: true }
           })
         );
       }
@@ -140,6 +140,33 @@ describe("AuthGate", () => {
     expect(screen.getByRole("button", { name: "开发登录" })).toBeInTheDocument();
   });
 
+  test("hides dev login when server disables development auth", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/me")) {
+        return Promise.resolve(new Response("", { status: 401 }));
+      }
+      if (url.endsWith("/api/v1/oauth/providers")) {
+        return Promise.resolve(
+          Response.json({
+            ok: true,
+            data: { providers: [{ id: "qq", name: "QQ 登录", type: "qq" }], devAuth: false }
+          })
+        );
+      }
+      return Promise.reject(new Error(`unexpected request ${url}`));
+    });
+
+    renderWithQueryClient(
+      <AuthGate>
+        <div>private content</div>
+      </AuthGate>
+    );
+
+    expect(await screen.findByRole("link", { name: "QQ 登录" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "开发登录" })).not.toBeInTheDocument();
+  });
+
   test("does not redirect to the removed dedicated OIDC route when dev login fails", async () => {
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const url = String(input);
@@ -150,7 +177,7 @@ describe("AuthGate", () => {
         return Promise.resolve(
           Response.json({
             ok: true,
-            data: { providers: [{ id: "qq", name: "QQ 登录", type: "qq" }] }
+            data: { providers: [{ id: "qq", name: "QQ 登录", type: "qq" }], devAuth: true }
           })
         );
       }

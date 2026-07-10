@@ -32,6 +32,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     enabled: me.isError,
     retry: false
   });
+  const devAuthEnabled = oauthProviders.data?.devAuth ?? false;
 
   async function login() {
     try {
@@ -62,9 +63,11 @@ export function AuthGate({ children }: PropsWithChildren) {
             {provider.name}
           </Button>
         ))}
-        <Button variant={(oauthProviders.data?.providers?.length ?? 0) > 0 ? "outlined" : "contained"} onClick={login}>
-          开发登录
-        </Button>
+        {devAuthEnabled ? (
+          <Button variant={(oauthProviders.data?.providers?.length ?? 0) > 0 ? "outlined" : "contained"} onClick={login}>
+            开发登录
+          </Button>
+        ) : null}
       </Stack>
     );
   }
