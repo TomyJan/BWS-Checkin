@@ -3,6 +3,7 @@ import {
   Avatar,
   Box,
   Button,
+  Chip,
   Container,
   Menu,
   MenuItem,
@@ -47,9 +48,18 @@ export function UserLayout({ children, maxWidth = "md" }: UserLayoutProps) {
             }}
           >
             <Stack direction="row" sx={{ alignItems: "center", gap: { xs: 1, sm: 2 }, minWidth: 0 }}>
-              <Typography variant="h6" sx={{ fontWeight: 900, whiteSpace: "nowrap" }}>
-                BWS 互助
-              </Typography>
+              <Stack direction="row" sx={{ alignItems: "center", gap: 0.75, flexShrink: 0 }}>
+                <Typography variant="h6" sx={{ fontWeight: 900, whiteSpace: "nowrap" }}>
+                  BWS 互助
+                </Typography>
+                <Chip
+                  label="Beta"
+                  color="primary"
+                  size="small"
+                  variant="outlined"
+                  sx={{ height: 20, fontSize: 11, fontWeight: 800, borderRadius: 999 }}
+                />
+              </Stack>
               <Stack direction="row" component="nav" aria-label="主导航" sx={{ gap: 0.5 }}>
                 <Button
                   component={RouterLink}
