@@ -16,6 +16,14 @@ import (
 const oauthStateCookiePrefix = "bws_oauth_state_"
 
 var errOAuthAccountAlreadyLinked = errors.New("oauth account already linked")
+var errOAuthLoginRequired = errors.New("oauth login required")
+
+type oauthFlowMode string
+
+const (
+	oauthFlowModeLogin oauthFlowMode = "login"
+	oauthFlowModeBind  oauthFlowMode = "bind"
+)
 
 type oauthTokenResponse struct {
 	AccessToken string `json:"access_token"`
@@ -51,7 +59,8 @@ func (h Handler) oauthLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to create OAuth state", http.StatusInternalServerError)
 		return
 	}
-	setOAuthState(w, provider.ID, state)
+	mode := oauthFlowModeFromRequest(r)
+	setOAuthState(w, provider.ID, state, mode)
 
 	authURL, err := h.oauthAuthorizationURL(r, provider, state)
 	if err != nil {
@@ -67,7 +76,8 @@ func (h Handler) oauthCallback(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := validateOAuthState(r, provider.ID); err != nil {
+	mode, err := validateOAuthState(r, provider.ID)
+	if err != nil {
 		h.redirectOAuthError(w, r, provider.ID, "oauth_state_invalid")
 		return
 	}
@@ -82,11 +92,15 @@ func (h Handler) oauthCallback(w http.ResponseWriter, r *http.Request) {
 		h.redirectOAuthError(w, r, provider.ID, "oauth_profile_failed")
 		return
 	}
-	user, err := h.loginOrBindOAuthProfile(r, provider, profile)
+	user, err := h.loginOrBindOAuthProfile(r, provider, profile, mode)
 	if err != nil {
 		errorCode := "oauth_binding_failed"
 		if errors.Is(err, errOAuthAccountAlreadyLinked) {
 			errorCode = "oauth_account_already_linked"
+		}
+		if errors.Is(err, errOAuthLoginRequired) {
+			h.clearSession(w)
+			errorCode = "oauth_login_required"
 		}
 		h.redirectOAuthError(w, r, provider.ID, errorCode)
 		return
@@ -331,18 +345,26 @@ func loadQQUserInfo(r *http.Request, provider OAuthProviderConfig, accessToken s
 	return userinfo, nil
 }
 
-func (h Handler) loginOrBindOAuthProfile(r *http.Request, provider OAuthProviderConfig, profile oauthProfile) (domain.User, error) {
+func (h Handler) loginOrBindOAuthProfile(r *http.Request, provider OAuthProviderConfig, profile oauthProfile, mode oauthFlowMode) (domain.User, error) {
 	if profile.Subject == "" || profile.DisplayName == "" {
 		return domain.User{}, errors.New("oauth profile is incomplete")
 	}
-	currentUserID, hasCurrentSession := h.sessionUserID(r)
 	linked, err := h.deps.Store.OAuthAccountByProviderSubject(r.Context(), provider.ID, profile.Subject)
 	if err == nil {
-		if hasCurrentSession && linked.UserID != currentUserID {
-			return domain.User{}, errOAuthAccountAlreadyLinked
+		if mode == oauthFlowModeBind {
+			currentUserID, hasCurrentSession := h.sessionUserID(r)
+			if !hasCurrentSession {
+				return domain.User{}, errOAuthLoginRequired
+			}
+			if linked.UserID != currentUserID {
+				return domain.User{}, errOAuthAccountAlreadyLinked
+			}
 		}
 		user, err := h.deps.Store.UserByID(r.Context(), linked.UserID)
 		if err != nil {
+			if mode == oauthFlowModeBind {
+				return domain.User{}, errOAuthLoginRequired
+			}
 			return domain.User{}, err
 		}
 		return user, h.deps.Store.LinkOAuthAccount(r.Context(), domain.OAuthAccount{
@@ -358,10 +380,14 @@ func (h Handler) loginOrBindOAuthProfile(r *http.Request, provider OAuthProvider
 	}
 
 	var user domain.User
-	if hasCurrentSession {
+	if mode == oauthFlowModeBind {
+		currentUserID, hasCurrentSession := h.sessionUserID(r)
+		if !hasCurrentSession {
+			return domain.User{}, errOAuthLoginRequired
+		}
 		loaded, err := h.deps.Store.UserByID(r.Context(), currentUserID)
 		if err != nil {
-			return domain.User{}, err
+			return domain.User{}, errOAuthLoginRequired
 		}
 		user = loaded
 	} else {
@@ -383,6 +409,28 @@ func (h Handler) loginOrBindOAuthProfile(r *http.Request, provider OAuthProvider
 	return user, nil
 }
 
+func oauthFlowModeFromRequest(r *http.Request) oauthFlowMode {
+	if r.URL.Query().Get("mode") == string(oauthFlowModeBind) {
+		return oauthFlowModeBind
+	}
+	return oauthFlowModeLogin
+}
+
+func encodeOAuthStateCookieValue(state string, mode oauthFlowMode) string {
+	return state + "|" + string(mode)
+}
+
+func decodeOAuthStateCookieValue(value string) (string, oauthFlowMode) {
+	state, mode, ok := strings.Cut(value, "|")
+	if !ok {
+		return value, oauthFlowModeLogin
+	}
+	if mode == string(oauthFlowModeBind) {
+		return state, oauthFlowModeBind
+	}
+	return state, oauthFlowModeLogin
+}
+
 func (h Handler) withOIDCProvider(provider OAuthProviderConfig) Handler {
 	oidcHandler := h
 	oidcHandler.deps.OIDC = OIDCConfig{
@@ -394,25 +442,26 @@ func (h Handler) withOIDCProvider(provider OAuthProviderConfig) Handler {
 	return oidcHandler
 }
 
-func setOAuthState(w http.ResponseWriter, providerID string, state string) {
+func setOAuthState(w http.ResponseWriter, providerID string, state string, mode oauthFlowMode) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     oauthStateCookiePrefix + providerID,
-		Value:    state,
+		Value:    encodeOAuthStateCookieValue(state, mode),
 		Path:     "/api/v1/auth/oauth/" + providerID,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-func validateOAuthState(r *http.Request, providerID string) error {
+func validateOAuthState(r *http.Request, providerID string) (oauthFlowMode, error) {
 	cookie, err := r.Cookie(oauthStateCookiePrefix + providerID)
 	if err != nil {
-		return err
+		return oauthFlowModeLogin, err
 	}
-	if cookie.Value == "" || cookie.Value != r.URL.Query().Get("state") {
-		return errors.New("oauth state mismatch")
+	state, mode := decodeOAuthStateCookieValue(cookie.Value)
+	if state == "" || state != r.URL.Query().Get("state") {
+		return oauthFlowModeLogin, errors.New("oauth state mismatch")
 	}
-	return nil
+	return mode, nil
 }
 
 func clearOAuthState(w http.ResponseWriter, providerID string) {

@@ -153,7 +153,7 @@ describe("ProfilePage", () => {
     expect(await screen.findByRole("heading", { name: "账号绑定" })).toBeInTheDocument();
     expect(screen.getByText("统一认证")).toBeInTheDocument();
     expect(screen.getByText("已绑定")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "绑定 QQ 登录" })).toHaveAttribute("href", "/api/v1/auth/oauth/qq/login");
+    expect(screen.getByRole("link", { name: "绑定 QQ 登录" })).toHaveAttribute("href", "/api/v1/auth/oauth/qq/login?mode=bind");
   });
 
   test("does not claim the current QR is available when the selected source has no image URL", async () => {

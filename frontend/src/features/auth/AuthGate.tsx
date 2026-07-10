@@ -105,6 +105,8 @@ function oauthErrorMessage(code: string | null): string {
       return "登录渠道没有返回授权码，请重新发起登录。";
     case "oauth_profile_failed":
       return "登录渠道返回的信息不完整，请稍后重试。";
+    case "oauth_login_required":
+      return "登录状态已失效，请重新登录后再绑定账号。";
     case "oauth_binding_failed":
       return "账号绑定失败，请稍后重试。";
     default:

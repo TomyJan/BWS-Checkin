@@ -72,6 +72,21 @@ func TestSessionRejectsTamperedCookie(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("me status = %d, want 401", w.Code)
 	}
+	assertClearsSessionCookie(t, w)
+}
+
+func TestSessionClearsCookieForMissingUser(t *testing.T) {
+	s := newTestStore(t)
+	h := NewRouter(Deps{Store: s, DevAuth: true, Session: SessionConfig{Secret: "test-secret"}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: signedSessionValue("missing-user", "test-secret")})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("me status = %d, want 401", w.Code)
+	}
+	assertClearsSessionCookie(t, w)
 }
 
 func TestMeRequiresLogin(t *testing.T) {
@@ -310,7 +325,7 @@ func TestOAuthCallbackBindsToCurrentUser(t *testing.T) {
 	cookies := loginForTest(t, h, "TomyJan")
 	userID := userIDForCookies(t, h, cookies)
 
-	login := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/login", nil)
+	login := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/login?mode=bind", nil)
 	for _, c := range cookies {
 		login.AddCookie(c)
 	}
@@ -350,6 +365,87 @@ func TestOAuthCallbackBindsToCurrentUser(t *testing.T) {
 	}
 	if user.DisplayName != "TomyJan" {
 		t.Fatalf("user display name = %q, want TomyJan", user.DisplayName)
+	}
+}
+
+func TestOAuthLoginWithExistingCookieDoesNotBindToCurrentSession(t *testing.T) {
+	s := newTestStore(t)
+	qq := newQQOAuthTestProvider(t)
+	h := NewRouter(Deps{
+		Store:   s,
+		DevAuth: true,
+		OAuthProviders: []OAuthProviderConfig{{
+			ID:           "qq",
+			Name:         "QQ 登录",
+			Type:         "qq",
+			AuthURL:      qq.URL + "/authorize",
+			TokenURL:     qq.URL + "/token",
+			UserInfoURL:  qq.URL + "/userinfo",
+			ClientID:     "qq-client",
+			ClientSecret: "qq-secret",
+			RedirectURL:  "http://app.test/api/v1/auth/oauth/qq/callback",
+		}},
+	})
+
+	firstLogin := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/login", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, firstLogin)
+	if w.Code != http.StatusFound {
+		t.Fatalf("first login status = %d, body = %s", w.Code, w.Body.String())
+	}
+	firstLocation, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse first login location: %v", err)
+	}
+	firstCallback := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/callback?code=qq-code&state="+url.QueryEscape(firstLocation.Query().Get("state")), nil)
+	for _, c := range w.Result().Cookies() {
+		firstCallback.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, firstCallback)
+	if w.Code != http.StatusFound {
+		t.Fatalf("first callback status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	secondUserCookies := loginForTest(t, h, "SecondUser")
+	secondLogin := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/login", nil)
+	for _, c := range secondUserCookies {
+		secondLogin.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, secondLogin)
+	if w.Code != http.StatusFound {
+		t.Fatalf("second login status = %d, body = %s", w.Code, w.Body.String())
+	}
+	secondLocation, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse second login location: %v", err)
+	}
+	loginCallback := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/callback?code=qq-code&state="+url.QueryEscape(secondLocation.Query().Get("state")), nil)
+	for _, c := range secondUserCookies {
+		loginCallback.AddCookie(c)
+	}
+	for _, c := range w.Result().Cookies() {
+		loginCallback.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, loginCallback)
+	if w.Code != http.StatusFound {
+		t.Fatalf("login callback status = %d, want 302, body = %s", w.Code, w.Body.String())
+	}
+	if location := w.Header().Get("Location"); location != "/" {
+		t.Fatalf("login callback location = %q", location)
+	}
+
+	me := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	for _, c := range w.Result().Cookies() {
+		me.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, me)
+	assertOK(t, w)
+	if !strings.Contains(w.Body.String(), "QQ 用户") {
+		t.Fatalf("expected OAuth login to switch to linked account, got %s", w.Body.String())
 	}
 }
 
@@ -393,7 +489,7 @@ func TestOAuthCallbackRedirectsFriendlyErrorForLinkedAccountConflict(t *testing.
 	}
 
 	secondUserCookies := loginForTest(t, h, "SecondUser")
-	secondLogin := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/login", nil)
+	secondLogin := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/login?mode=bind", nil)
 	for _, c := range secondUserCookies {
 		secondLogin.AddCookie(c)
 	}
@@ -1668,6 +1764,16 @@ func assertBusinessError(t *testing.T, w *httptest.ResponseRecorder, code string
 	if body.Error.Code != code {
 		t.Fatalf("error code = %q, want %q, body = %s", body.Error.Code, code, w.Body.String())
 	}
+}
+
+func assertClearsSessionCookie(t *testing.T, w *httptest.ResponseRecorder) {
+	t.Helper()
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == sessionCookieName && cookie.MaxAge < 0 {
+			return
+		}
+	}
+	t.Fatalf("expected response to clear %s cookie, got %+v", sessionCookieName, w.Result().Cookies())
 }
 
 func hasAuditAction(logs []store.AuditLog, action string) bool {

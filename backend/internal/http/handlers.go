@@ -993,11 +993,13 @@ func (h Handler) refreshTaskStatus(w http.ResponseWriter, r *http.Request) {
 func (h Handler) currentUser(w http.ResponseWriter, r *http.Request) (domain.User, bool) {
 	userID, ok := h.sessionUserID(r)
 	if !ok {
+		h.clearSession(w)
 		writeUnauthorized(w)
 		return domain.User{}, false
 	}
 	user, err := h.deps.Store.UserByID(r.Context(), userID)
 	if err != nil {
+		h.clearSession(w)
 		writeUnauthorized(w)
 		return domain.User{}, false
 	}
