@@ -15,6 +15,8 @@ import (
 
 const oauthStateCookiePrefix = "bws_oauth_state_"
 
+var errOAuthAccountAlreadyLinked = errors.New("oauth account already linked")
+
 type oauthTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
@@ -66,28 +68,51 @@ func (h Handler) oauthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := validateOAuthState(r, provider.ID); err != nil {
-		http.Error(w, "invalid OAuth state", http.StatusBadRequest)
+		h.redirectOAuthError(w, r, provider.ID, "oauth_state_invalid")
 		return
 	}
 	code := r.URL.Query().Get("code")
 	if code == "" {
-		http.Error(w, "missing OAuth code", http.StatusBadRequest)
+		h.redirectOAuthError(w, r, provider.ID, "oauth_code_missing")
 		return
 	}
 
 	profile, err := h.oauthProfile(r, provider, code)
 	if err != nil {
-		http.Error(w, "OAuth profile failed", http.StatusBadGateway)
+		h.redirectOAuthError(w, r, provider.ID, "oauth_profile_failed")
 		return
 	}
 	user, err := h.loginOrBindOAuthProfile(r, provider, profile)
 	if err != nil {
-		http.Error(w, "OAuth account binding failed", http.StatusBadRequest)
+		errorCode := "oauth_binding_failed"
+		if errors.Is(err, errOAuthAccountAlreadyLinked) {
+			errorCode = "oauth_account_already_linked"
+		}
+		h.redirectOAuthError(w, r, provider.ID, errorCode)
 		return
 	}
 	h.setSession(w, user.ID)
 	clearOAuthState(w, provider.ID)
 	http.Redirect(w, r, h.postLoginRedirect(), http.StatusFound)
+}
+
+func (h Handler) redirectOAuthError(w http.ResponseWriter, r *http.Request, providerID string, code string) {
+	clearOAuthState(w, providerID)
+	http.Redirect(w, r, oauthErrorRedirectURL(h.postLoginRedirect(), code), http.StatusFound)
+}
+
+func oauthErrorRedirectURL(target string, code string) string {
+	if target == "" {
+		target = "/"
+	}
+	parsed, err := url.Parse(target)
+	if err != nil {
+		parsed = &url.URL{Path: "/"}
+	}
+	values := parsed.Query()
+	values.Set("auth_error", code)
+	parsed.RawQuery = values.Encode()
+	return parsed.String()
 }
 
 func (h Handler) oauthProvider(id string) (OAuthProviderConfig, bool) {
@@ -314,7 +339,7 @@ func (h Handler) loginOrBindOAuthProfile(r *http.Request, provider OAuthProvider
 	linked, err := h.deps.Store.OAuthAccountByProviderSubject(r.Context(), provider.ID, profile.Subject)
 	if err == nil {
 		if hasCurrentSession && linked.UserID != currentUserID {
-			return domain.User{}, errors.New("oauth account already linked")
+			return domain.User{}, errOAuthAccountAlreadyLinked
 		}
 		user, err := h.deps.Store.UserByID(r.Context(), linked.UserID)
 		if err != nil {

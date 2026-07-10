@@ -1,4 +1,4 @@
-import { Button, CircularProgress, Stack, Typography } from "@mui/material";
+import { Alert, Button, CircularProgress, Stack, Typography } from "@mui/material";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PropsWithChildren } from "react";
 import { api, getOAuthProviders } from "../../api/client";
@@ -33,6 +33,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     retry: false
   });
   const devAuthEnabled = oauthProviders.data?.devAuth ?? false;
+  const authErrorMessage = oauthErrorMessage(new URLSearchParams(window.location.search).get("auth_error"));
 
   async function login() {
     try {
@@ -58,6 +59,11 @@ export function AuthGate({ children }: PropsWithChildren) {
         <Typography variant="h4" sx={{ fontWeight: 800 }}>
           BWS Checkin
         </Typography>
+        {authErrorMessage ? (
+          <Alert severity="error" sx={{ width: "min(100% - 32px, 420px)" }}>
+            {authErrorMessage}
+          </Alert>
+        ) : null}
         {(oauthProviders.data?.providers ?? []).map((provider) => (
           <Button key={provider.id} variant="contained" href={`/api/v1/auth/oauth/${provider.id}/login`}>
             {provider.name}
@@ -86,5 +92,22 @@ function cachedMe(): MeResponse | null {
     return JSON.parse(raw) as MeResponse;
   } catch {
     return null;
+  }
+}
+
+function oauthErrorMessage(code: string | null): string {
+  switch (code) {
+    case "oauth_account_already_linked":
+      return "该第三方账号已绑定到其他用户。请切换账号后重试。";
+    case "oauth_state_invalid":
+      return "登录状态已失效，请重新发起登录。";
+    case "oauth_code_missing":
+      return "登录渠道没有返回授权码，请重新发起登录。";
+    case "oauth_profile_failed":
+      return "登录渠道返回的信息不完整，请稍后重试。";
+    case "oauth_binding_failed":
+      return "账号绑定失败，请稍后重试。";
+    default:
+      return "";
   }
 }

@@ -173,8 +173,11 @@ func TestOIDCCallbackRejectsInvalidState(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=auth-code&state=bad", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("callback status = %d, want 400", w.Code)
+	if w.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want 302", w.Code)
+	}
+	if location := w.Header().Get("Location"); location != "/?auth_error=oauth_state_invalid" {
+		t.Fatalf("callback location = %q", location)
 	}
 }
 
@@ -211,8 +214,11 @@ func TestOIDCCallbackRejectsInvalidIDTokenIssuer(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, callback)
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("callback status = %d, want 502", w.Code)
+	if w.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, want 302", w.Code)
+	}
+	if location := w.Header().Get("Location"); location != "/?auth_error=oauth_profile_failed" {
+		t.Fatalf("callback location = %q", location)
 	}
 }
 
@@ -344,6 +350,79 @@ func TestOAuthCallbackBindsToCurrentUser(t *testing.T) {
 	}
 	if user.DisplayName != "TomyJan" {
 		t.Fatalf("user display name = %q, want TomyJan", user.DisplayName)
+	}
+}
+
+func TestOAuthCallbackRedirectsFriendlyErrorForLinkedAccountConflict(t *testing.T) {
+	s := newTestStore(t)
+	qq := newQQOAuthTestProvider(t)
+	h := NewRouter(Deps{
+		Store:   s,
+		DevAuth: true,
+		OAuthProviders: []OAuthProviderConfig{{
+			ID:           "qq",
+			Name:         "QQ 登录",
+			Type:         "qq",
+			AuthURL:      qq.URL + "/authorize",
+			TokenURL:     qq.URL + "/token",
+			UserInfoURL:  qq.URL + "/userinfo",
+			ClientID:     "qq-client",
+			ClientSecret: "qq-secret",
+			RedirectURL:  "http://app.test/api/v1/auth/oauth/qq/callback",
+		}},
+	})
+
+	firstLogin := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/login", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, firstLogin)
+	if w.Code != http.StatusFound {
+		t.Fatalf("first login status = %d, body = %s", w.Code, w.Body.String())
+	}
+	firstLocation, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse first login location: %v", err)
+	}
+	firstCallback := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/callback?code=qq-code&state="+url.QueryEscape(firstLocation.Query().Get("state")), nil)
+	for _, c := range w.Result().Cookies() {
+		firstCallback.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, firstCallback)
+	if w.Code != http.StatusFound {
+		t.Fatalf("first callback status = %d, body = %s", w.Code, w.Body.String())
+	}
+
+	secondUserCookies := loginForTest(t, h, "SecondUser")
+	secondLogin := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/login", nil)
+	for _, c := range secondUserCookies {
+		secondLogin.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, secondLogin)
+	if w.Code != http.StatusFound {
+		t.Fatalf("second login status = %d, body = %s", w.Code, w.Body.String())
+	}
+	secondLocation, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse second login location: %v", err)
+	}
+	conflictCallback := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/qq/callback?code=qq-code&state="+url.QueryEscape(secondLocation.Query().Get("state")), nil)
+	for _, c := range secondUserCookies {
+		conflictCallback.AddCookie(c)
+	}
+	for _, c := range w.Result().Cookies() {
+		conflictCallback.AddCookie(c)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, conflictCallback)
+	if w.Code != http.StatusFound {
+		t.Fatalf("conflict callback status = %d, want 302, body = %s", w.Code, w.Body.String())
+	}
+	if location := w.Header().Get("Location"); location != "/?auth_error=oauth_account_already_linked" {
+		t.Fatalf("conflict callback location = %q", location)
+	}
+	if strings.Contains(w.Body.String(), "OAuth account binding failed") {
+		t.Fatalf("callback leaked raw error body: %s", w.Body.String())
 	}
 }
 

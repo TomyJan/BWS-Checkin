@@ -24,6 +24,7 @@ describe("AuthGate", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+    window.history.pushState({}, "", "/");
     setOnline(true);
   });
 
@@ -196,5 +197,33 @@ describe("AuthGate", () => {
     fireEvent.click(await screen.findByRole("button", { name: "开发登录" }));
 
     expect(await screen.findByRole("link", { name: "QQ 登录" })).toHaveAttribute("href", "/api/v1/auth/oauth/qq/login");
+  });
+
+  test("shows friendly OAuth callback error message", async () => {
+    window.history.pushState({}, "", "/?auth_error=oauth_account_already_linked");
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/me")) {
+        return Promise.resolve(new Response("", { status: 401 }));
+      }
+      if (url.endsWith("/api/v1/oauth/providers")) {
+        return Promise.resolve(
+          Response.json({
+            ok: true,
+            data: { providers: [{ id: "qq", name: "QQ 登录", type: "qq" }], devAuth: false }
+          })
+        );
+      }
+      return Promise.reject(new Error(`unexpected request ${url}`));
+    });
+
+    renderWithQueryClient(
+      <AuthGate>
+        <div>private content</div>
+      </AuthGate>
+    );
+
+    expect(await screen.findByText("该第三方账号已绑定到其他用户。请切换账号后重试。")).toBeInTheDocument();
+    expect(screen.queryByText("OAuth account binding failed")).not.toBeInTheDocument();
   });
 });
