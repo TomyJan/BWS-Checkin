@@ -16,6 +16,18 @@ func TestLoadOAuthProvidersFromJSON(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsInvalidOAuthProvidersJSON(t *testing.T) {
+	t.Setenv("BWS_DEV_AUTH", "0")
+	t.Setenv("BWS_SESSION_SECRET", "session-secret-for-test")
+	t.Setenv("BWS_BILIBILI_COOKIE_SECRET", "bilibili-cookie-secret-for-test")
+	t.Setenv("BWS_OAUTH_PROVIDERS", `[{id:qq}]`)
+
+	cfg := Load()
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() err = nil, want invalid OAuth providers JSON error")
+	}
+}
+
 func TestValidateProductionQQAndCasdoorProviders(t *testing.T) {
 	cfg := Config{
 		DevAuth:              false,

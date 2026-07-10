@@ -24,6 +24,7 @@ type Config struct {
 	BilibiliPassportBase string
 	BilibiliAPIBase      string
 	OAuthProviders       []OAuthProviderConfig
+	OAuthProvidersError  string
 }
 
 type OAuthProviderConfig struct {
@@ -61,7 +62,11 @@ func Load() Config {
 		BilibiliPassportBase: env("BWS_BILIBILI_PASSPORT_BASE", ""),
 		BilibiliAPIBase:      env("BWS_BILIBILI_API_BASE", ""),
 	}
-	cfg.OAuthProviders = loadOAuthProviders(cfg)
+	providers, providersErr := loadOAuthProviders(cfg)
+	cfg.OAuthProviders = providers
+	if providersErr != nil {
+		cfg.OAuthProvidersError = providersErr.Error()
+	}
 	return cfg
 }
 
@@ -71,6 +76,9 @@ func (c Config) Validate() error {
 	}
 	if c.SessionSecret == "" {
 		return errors.New("BWS_SESSION_SECRET is required when BWS_DEV_AUTH=0")
+	}
+	if c.OAuthProvidersError != "" {
+		return errors.New("BWS_OAUTH_PROVIDERS must be valid JSON: " + c.OAuthProvidersError)
 	}
 	providers := c.OAuthProviders
 	if len(providers) == 0 {
@@ -104,10 +112,12 @@ func env(key, fallback string) string {
 	return fallback
 }
 
-func loadOAuthProviders(cfg Config) []OAuthProviderConfig {
+func loadOAuthProviders(cfg Config) ([]OAuthProviderConfig, error) {
 	var providers []OAuthProviderConfig
 	if raw := env("BWS_OAUTH_PROVIDERS", ""); raw != "" {
-		_ = json.Unmarshal([]byte(raw), &providers)
+		if err := json.Unmarshal([]byte(raw), &providers); err != nil {
+			return nil, err
+		}
 	}
 	for index := range providers {
 		if providers[index].Type == "" {
@@ -120,7 +130,7 @@ func loadOAuthProviders(cfg Config) []OAuthProviderConfig {
 			providers[index].RedirectURL = cfg.PublicBase + "/api/v1/auth/oauth/" + providers[index].ID + "/callback"
 		}
 	}
-	return providers
+	return providers, nil
 }
 
 func intEnv(key string, fallback int) int {
