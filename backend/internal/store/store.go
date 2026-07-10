@@ -509,12 +509,17 @@ func (s *Store) UserGroups(ctx context.Context, userID string, includeArchived b
 		archiveFilter = ""
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT g.id, g.name, g.day, g.description, gm.role, g.join_locked, g.archived_at,
-			(SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
-			(SELECT COUNT(*) FROM tasks WHERE enabled = 1) AS task_count
-		FROM groups g
-		JOIN group_members gm ON gm.group_id = g.id
-		WHERE gm.user_id = ? `+archiveFilter+`
+			SELECT g.id, g.name, g.day, g.description, gm.role, g.join_locked, g.archived_at,
+				(SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
+				(SELECT COUNT(*) FROM tasks WHERE enabled = 1 AND event_day = CASE g.day
+					WHEN 'friday' THEN '20260710'
+					WHEN 'saturday' THEN '20260711'
+					WHEN 'sunday' THEN '20260712'
+					ELSE g.day
+				END) AS task_count
+			FROM groups g
+			JOIN group_members gm ON gm.group_id = g.id
+			WHERE gm.user_id = ? `+archiveFilter+`
 		ORDER BY g.created_at DESC
 	`, userID)
 	if err != nil {
@@ -552,12 +557,17 @@ func (s *Store) GroupByID(ctx context.Context, groupID string, userID string) (d
 	var joinLocked int
 	var archivedAt string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT g.id, g.name, g.day, g.description, gm.role, g.join_locked, g.archived_at,
-			(SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
-			(SELECT COUNT(*) FROM tasks WHERE enabled = 1) AS task_count
-		FROM groups g
-		JOIN group_members gm ON gm.group_id = g.id
-		WHERE g.id = ? AND gm.user_id = ?
+			SELECT g.id, g.name, g.day, g.description, gm.role, g.join_locked, g.archived_at,
+				(SELECT COUNT(*) FROM group_members WHERE group_id = g.id) AS member_count,
+				(SELECT COUNT(*) FROM tasks WHERE enabled = 1 AND event_day = CASE g.day
+					WHEN 'friday' THEN '20260710'
+					WHEN 'saturday' THEN '20260711'
+					WHEN 'sunday' THEN '20260712'
+					ELSE g.day
+				END) AS task_count
+			FROM groups g
+			JOIN group_members gm ON gm.group_id = g.id
+			WHERE g.id = ? AND gm.user_id = ?
 	`, groupID, userID).Scan(
 		&group.ID,
 		&group.Name,

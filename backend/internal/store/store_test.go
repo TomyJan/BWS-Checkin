@@ -161,6 +161,35 @@ func TestGroupTasksFilterByEventDate(t *testing.T) {
 	}
 }
 
+func TestGroupTaskCountUsesEventDate(t *testing.T) {
+	s := newTestStore(t)
+	owner := mustCreateUser(t, s, "oidc-owner", "Owner")
+	if err := s.CreateGroup(t.Context(), CreateGroupInput{
+		ID: "bw2026-day2", Name: "BW2026 7 月 11 日", Day: "20260711", OwnerUserID: owner.ID,
+	}); err != nil {
+		t.Fatalf("create group with event date: %v", err)
+	}
+
+	groups, err := s.UserGroups(t.Context(), owner.ID, false)
+	if err != nil {
+		t.Fatalf("user groups: %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("groups length = %d, want 1", len(groups))
+	}
+	if groups[0].TaskCount != 16 {
+		t.Fatalf("list task count = %d, want 16", groups[0].TaskCount)
+	}
+
+	group, err := s.GroupByID(t.Context(), "bw2026-day2", owner.ID)
+	if err != nil {
+		t.Fatalf("group by id: %v", err)
+	}
+	if group.TaskCount != 16 {
+		t.Fatalf("detail task count = %d, want 16", group.TaskCount)
+	}
+}
+
 func TestDefaultTasksUsePersistedBilibiliDataForAllEventDays(t *testing.T) {
 	s := newTestStore(t)
 	owner := mustCreateUser(t, s, "oidc-owner", "Owner")
