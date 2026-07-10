@@ -378,7 +378,7 @@ export function GroupPage() {
     return `${time} ${currentMember.checkedByName}`;
   }, [currentMember]);
 
-  const currentMemberLive = currentMember ? isLiveCompletion(currentMember) : false;
+  const currentMemberLive = currentMember ? usesRefreshCompletion(currentMember) : false;
   const currentMemberCanRefresh = currentMember ? canRefreshCompletion(currentMember) : false;
 
   if (loading) {
@@ -722,12 +722,20 @@ function isLiveCompletion(entry: MemberCompletion) {
   return entry.source === "live" || entry.status?.startsWith("live_") === true;
 }
 
+function usesBilibiliGeneratedQR(entry: MemberCompletion) {
+  return entry.member.qrSource === "bilibili_generated";
+}
+
+function usesRefreshCompletion(entry: MemberCompletion) {
+  return usesBilibiliGeneratedQR(entry) || isLiveCompletion(entry);
+}
+
 function canToggleCompletion(entry: MemberCompletion) {
-  return entry.canToggle ?? !isLiveCompletion(entry);
+  return !usesBilibiliGeneratedQR(entry) && (entry.canToggle ?? !isLiveCompletion(entry));
 }
 
 function canRefreshCompletion(entry: MemberCompletion) {
-  return entry.canRefresh ?? isLiveCompletion(entry);
+  return usesBilibiliGeneratedQR(entry) || (entry.canRefresh ?? isLiveCompletion(entry));
 }
 
 function completionMeta(entry: MemberCompletion) {

@@ -61,6 +61,7 @@ type Member struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
 	QRImageURL  string `json:"qrImageUrl"`
+	QRSource    string `json:"qrSource"`
 }
 
 type TaskStatus struct {

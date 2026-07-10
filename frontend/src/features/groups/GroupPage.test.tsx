@@ -33,6 +33,7 @@ function renderGroupPage() {
 
 describe("GroupPage", () => {
   let liveMode = false;
+  let bilibiliGeneratedQR = false;
   let refreshCalls = 0;
   let taskSyncCalls = 0;
   let groupDetailBusinessError = false;
@@ -40,6 +41,7 @@ describe("GroupPage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     liveMode = false;
+    bilibiliGeneratedQR = false;
     refreshCalls = 0;
     taskSyncCalls = 0;
     groupDetailBusinessError = false;
@@ -123,7 +125,12 @@ describe("GroupPage", () => {
                   totalCount: 1,
                   members: [
                     {
-                      member: { id: "u1", displayName: "Alice", qrImageUrl: "/uploads/u1.png" },
+                      member: {
+                        id: "u1",
+                        displayName: "Alice",
+                        qrImageUrl: "/uploads/u1.png",
+                        qrSource: bilibiliGeneratedQR ? "bilibili_generated" : "uploaded"
+                      },
                       ...memberStatus
                     }
                   ]
@@ -141,7 +148,12 @@ describe("GroupPage", () => {
                   totalCount: 1,
                   members: [
                     {
-                      member: { id: "u1", displayName: "Alice", qrImageUrl: "/uploads/u1.png" },
+                      member: {
+                        id: "u1",
+                        displayName: "Alice",
+                        qrImageUrl: "/uploads/u1.png",
+                        qrSource: bilibiliGeneratedQR ? "bilibili_generated" : "uploaded"
+                      },
                       completed: false,
                       completedAt: null,
                       updatedAt: null,
@@ -250,6 +262,17 @@ describe("GroupPage", () => {
     renderGroupPage();
 
     await waitFor(() => expect(screen.getByRole("button", { name: "刷新状态" })).toBeDisabled());
+  });
+
+  test("shows refresh action for Bilibili generated QR even before Live status exists", async () => {
+    bilibiliGeneratedQR = true;
+    renderGroupPage();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "刷新状态" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /标记 Alice 完成/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新状态" }));
+    await waitFor(() => expect(refreshCalls).toBe(1));
   });
 
   test("keeps task picker compact without stretching sparse task cards", () => {

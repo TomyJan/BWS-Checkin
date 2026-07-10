@@ -84,6 +84,7 @@ export interface Member {
   id: string;
   displayName: string;
   qrImageUrl: string;
+  qrSource?: "uploaded" | "bilibili_generated";
 }
 
 export type CompletionStatus = "manual_incomplete" | "manual_completed" | "live_incomplete" | "live_completed";

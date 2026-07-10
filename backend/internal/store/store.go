@@ -867,7 +867,7 @@ func (s *Store) SyncTaskCompletion(ctx context.Context, input SyncTaskCompletion
 	} else if archived {
 		return ErrGroupArchived
 	}
-	if locked, err := s.completionLiveLocked(ctx, input.GroupID, input.TaskID, input.TargetUserID); err != nil {
+	if locked, err := s.completionManualLocked(ctx, input.GroupID, input.TaskID, input.TargetUserID); err != nil {
 		return err
 	} else if locked {
 		return ErrLiveCompletionLocked
@@ -961,7 +961,15 @@ func (s *Store) MarkLiveTaskCompletionStale(ctx context.Context, groupID string,
 	return err
 }
 
-func (s *Store) completionLiveLocked(ctx context.Context, groupID string, taskID string, targetUserID string) (bool, error) {
+func (s *Store) completionManualLocked(ctx context.Context, groupID string, taskID string, targetUserID string) (bool, error) {
+	var qrSource string
+	if err := s.db.QueryRowContext(ctx, `SELECT qr_source FROM users WHERE id = ?`, targetUserID).Scan(&qrSource); err != nil {
+		return false, err
+	}
+	if qrSource == domain.QRSourceBilibiliGenerated {
+		return true, nil
+	}
+
 	var source string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT source
@@ -1029,6 +1037,7 @@ func (s *Store) groupMembers(ctx context.Context, groupID string) ([]domain.Memb
 		if err := rows.Scan(&member.ID, &member.DisplayName, &qrPath, &qrSource); err != nil {
 			return nil, err
 		}
+		member.QRSource = qrSource
 		member.QRImageURL = qrAPIURL(member.ID, qrPath, qrSource)
 		members = append(members, member)
 	}

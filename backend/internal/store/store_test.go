@@ -2,8 +2,10 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,6 +298,32 @@ func TestBilibiliAccountAndQRSource(t *testing.T) {
 	}
 }
 
+func TestGroupTasksExposeMemberQRSource(t *testing.T) {
+	s := newTestStore(t)
+	owner := mustCreateUser(t, s, "oidc-owner", "Owner")
+	member := mustCreateUser(t, s, "oidc-bilibili-member", "Bilibili Member")
+	mustCreateGroup(t, s, "bw2026-qr-source", owner.ID)
+	if err := s.JoinGroup(t.Context(), "bw2026-qr-source", member.ID); err != nil {
+		t.Fatalf("join group: %v", err)
+	}
+	if err := s.SetUserQRSource(t.Context(), member.ID, domain.QRSourceBilibiliGenerated); err != nil {
+		t.Fatalf("set member qr source: %v", err)
+	}
+
+	tasks, err := s.GroupTasks(t.Context(), "bw2026-qr-source")
+	if err != nil {
+		t.Fatalf("group tasks: %v", err)
+	}
+	entry := memberCompletion(t, tasks[0], member.ID)
+	payload, err := json.Marshal(entry.Member)
+	if err != nil {
+		t.Fatalf("marshal member: %v", err)
+	}
+	if !strings.Contains(string(payload), `"qrSource":"bilibili_generated"`) {
+		t.Fatalf("member json = %s, want qrSource bilibili_generated", payload)
+	}
+}
+
 func TestLiveCompletionLocksManualSync(t *testing.T) {
 	s := newTestStore(t)
 	owner := mustCreateUser(t, s, "oidc-live-owner", "Owner")
@@ -348,6 +376,31 @@ func TestLiveCompletionLocksManualSync(t *testing.T) {
 	}
 	if entry.LiveCheckedAt == nil || !entry.LiveCheckedAt.Equal(liveCheckedAt) {
 		t.Fatalf("live checked at = %v, want %v", entry.LiveCheckedAt, liveCheckedAt)
+	}
+}
+
+func TestBilibiliGeneratedQRLocksManualSync(t *testing.T) {
+	s := newTestStore(t)
+	owner := mustCreateUser(t, s, "oidc-owner", "Owner")
+	member := mustCreateUser(t, s, "oidc-bilibili-member", "Bilibili Member")
+	mustCreateGroup(t, s, "bw2026-bilibili-lock", owner.ID)
+	if err := s.JoinGroup(t.Context(), "bw2026-bilibili-lock", member.ID); err != nil {
+		t.Fatalf("join group: %v", err)
+	}
+	if err := s.SetUserQRSource(t.Context(), member.ID, domain.QRSourceBilibiliGenerated); err != nil {
+		t.Fatalf("set member qr source: %v", err)
+	}
+
+	err := s.SyncTaskCompletion(t.Context(), SyncTaskCompletionInput{
+		GroupID:         "bw2026-bilibili-lock",
+		TaskID:          defaultTaskID,
+		TargetUserID:    member.ID,
+		CheckedByUserID: owner.ID,
+		Completed:       true,
+		UpdatedAt:       time.Date(2026, 7, 10, 13, 0, 0, 0, time.UTC),
+	})
+	if !errors.Is(err, ErrLiveCompletionLocked) {
+		t.Fatalf("manual sync for generated QR err = %v, want ErrLiveCompletionLocked", err)
 	}
 }
 
