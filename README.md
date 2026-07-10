@@ -67,6 +67,46 @@ go build -o ../dist/bws-checkin.exe ./cmd/server
 
 Release 工作流会自动执行上述流程，并发布 Linux x64 与 Windows x64 二进制。
 
+### 生产启动脚本
+
+仓库提供 `deploy/start.sh`，用于显式加载当前目录 `.env` 后启动发布二进制。脚本逻辑等价于先加载 `~/.bashrc`，再加载配置文件，最后执行 `./bws-checkin`：
+
+```bash
+source ~/.bashrc
+set -a
+source .env
+set +a
+./bws-checkin
+```
+
+推荐部署目录结构：
+
+```text
+/opt/bws-checkin/
+  bws-checkin
+  start.sh
+  .env
+```
+
+使用方式：
+
+```bash
+cp deploy/production.env.example /opt/bws-checkin/.env
+cp deploy/start.sh /opt/bws-checkin/start.sh
+chmod 600 /opt/bws-checkin/.env
+chmod +x /opt/bws-checkin/start.sh
+cd /opt/bws-checkin
+./start.sh
+```
+
+如果不想把配置文件命名为 `.env`，可以用 `BWS_ENV_FILE` 指定路径：
+
+```bash
+BWS_ENV_FILE=/etc/bws-checkin/production.env ./start.sh
+```
+
+脚本加载配置前会自动处理 CRLF 行尾。从 Windows 复制或编辑得到的 `.env` 不需要手动执行 `dos2unix`。
+
 ### 发布前核对
 
 发布当前 MVP 前，至少确认以下事项：
