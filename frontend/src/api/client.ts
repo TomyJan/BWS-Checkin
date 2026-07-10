@@ -28,6 +28,13 @@ export class ApiError extends Error {
   }
 }
 
+export function apiErrorMessage(error: unknown, fallback = "操作失败，请稍后重试"): string {
+  if (error instanceof ApiError && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers =
     init.body instanceof FormData

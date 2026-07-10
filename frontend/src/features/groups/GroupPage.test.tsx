@@ -35,12 +35,14 @@ describe("GroupPage", () => {
   let liveMode = false;
   let refreshCalls = 0;
   let taskSyncCalls = 0;
+  let groupDetailBusinessError = false;
 
   beforeEach(() => {
     vi.restoreAllMocks();
     liveMode = false;
     refreshCalls = 0;
     taskSyncCalls = 0;
+    groupDetailBusinessError = false;
     Object.defineProperty(window.navigator, "onLine", {
       configurable: true,
       value: true
@@ -48,6 +50,14 @@ describe("GroupPage", () => {
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const url = String(input);
       if (url.includes("/api/v1/group/detail")) {
+        if (groupDetailBusinessError) {
+          return Promise.resolve(
+            Response.json({
+              ok: false,
+              error: { code: "group_access_denied", message: "互助组不存在或你无权访问" }
+            })
+          );
+        }
         return Promise.resolve(
           Response.json({
             ok: true,
@@ -166,6 +176,15 @@ describe("GroupPage", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  test("shows backend business error message when group access is denied", async () => {
+    groupDetailBusinessError = true;
+
+    renderGroupPage();
+
+    expect(await screen.findByText("互助组不存在或你无权访问")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /二维码/ })).not.toBeInTheDocument();
   });
 
   test("does not render duplicated QR subtitle and ignores control clicks for overlay toggle", async () => {

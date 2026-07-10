@@ -24,7 +24,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, refreshTaskStatus } from "../../api/client";
+import { api, apiErrorMessage, refreshTaskStatus } from "../../api/client";
 import { qrImageURL } from "../../api/qr";
 import type { GroupResponse, MeResponse, MemberCompletion, TasksResponse, TaskStatus, User } from "../../api/types";
 import {
@@ -231,11 +231,17 @@ export function GroupPage() {
     },
     onError: (error) => {
       setManageAnchor(null);
-      setCopyMessage(error instanceof Error ? error.message : "乐园任务同步失败");
+      setCopyMessage(apiErrorMessage(error, "乐园任务同步失败"));
     }
   });
 
   const loading = group.isLoading || tasksQuery.isLoading;
+  const pageError =
+    group.isError
+      ? apiErrorMessage(group.error, "互助组加载失败")
+      : tasksQuery.isError
+        ? apiErrorMessage(tasksQuery.error, "点位数据加载失败")
+        : "";
 
   function shiftMember(delta: number) {
     if (members.length === 0) return;
@@ -379,6 +385,19 @@ export function GroupPage() {
     return (
       <Stack sx={{ minHeight: "100vh", alignItems: "center", justifyContent: "center" }}>
         <CircularProgress />
+      </Stack>
+    );
+  }
+
+  if (pageError) {
+    return (
+      <Stack spacing={2} sx={{ minHeight: "100vh", alignItems: "center", justifyContent: "center", px: 2 }}>
+        <Alert severity="error" sx={{ width: "min(100%, 480px)" }}>
+          {pageError}
+        </Alert>
+        <Button variant="contained" onClick={() => navigate("/")}>
+          返回我的互助组
+        </Button>
       </Stack>
     );
   }
